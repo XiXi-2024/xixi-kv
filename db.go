@@ -125,6 +125,34 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	return logRecord.Value, nil
 }
 
+// Delete 根据 key 删除数据
+func (db *DB) Delete(key []byte) error {
+	// 验证 key 是否合法
+	if len(key) == 0 {
+		return ErrKeyIsEmpty
+	}
+
+	// key 不存在直接返回 避免重复向磁盘数据文件追加墓碑值
+	if pos := db.index.Get(key); pos == nil {
+		return nil
+	}
+
+	// 构造 LogRecord 设置删除状态 作为墓碑值追加到数据文件中
+	logRecord := &data.LogRecord{Key: key, Type: data.LogRecordDeleted}
+	_, err := db.appendLogRecord(logRecord)
+	if err != nil {
+		return err
+	}
+
+	// 同步删除索引中对应key
+	ok := db.index.Delete(key)
+	if !ok {
+		return ErrIndexUpdateFailed
+	}
+
+	return nil
+}
+
 // 将日志记录追加到当前活跃文件
 func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
 	db.mu.Lock()
