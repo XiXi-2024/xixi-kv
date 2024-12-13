@@ -13,6 +13,28 @@ type Indexer interface {
 	Delete(key []byte) bool
 }
 
+type IndexType = int8
+
+const (
+	// Btree 索引
+	Btree IndexType = iota + 1
+	// ART 自适应基数树索引
+	ART
+)
+
+// NewIndexer 根据类型创建对应的索引实现
+func NewIndexer(typ IndexType) Indexer {
+	switch typ {
+	case Btree:
+		return NewBTree()
+	case ART:
+		// todo
+		return nil
+	default:
+		panic("unsupported index type")
+	}
+}
+
 // Item BTree节点实现
 type Item struct {
 	key []byte
