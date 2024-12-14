@@ -62,7 +62,7 @@ type Iterator interface {
 	// Next 遍历下一个元素
 	Next()
 
-	// Valid 是否遍历完成
+	// Valid 判断是否遍历完成
 	Valid() bool
 
 	// Key 返回当前位置的 key

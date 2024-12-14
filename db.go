@@ -57,7 +57,7 @@ func Open(options Options) (*DB, error) {
 	return db, nil
 }
 
-// Put 写入 Key/Value 数据 Key不允许为空
+// Put 写入key/value数据
 func (db *DB) Put(key []byte, value []byte) error {
 	// 判断 key 是否合法
 	if len(key) == 0 {
@@ -85,7 +85,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 	return nil
 }
 
-// Get 根据 Key 读取数据
+// Get 根据 key 读取数据
 func (db *DB) Get(key []byte) ([]byte, error) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
@@ -94,35 +94,14 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrKeyIsEmpty
 	}
 
-	// 从内存中获取 Key 对应的索引数据
+	// 从内存中获取 key 对应的索引数据
 	logRecordPos := db.index.Get(key)
 	if logRecordPos == nil {
 		return nil, ErrKeyNotFound
 	}
 
-	// 根据文件 id 找到对应的数据文件
-	var dataFile *data.DataFile
-	if db.activeFile.FileId == logRecordPos.Fid {
-		dataFile = db.activeFile
-	} else {
-		dataFile = db.olderFiles[logRecordPos.Fid]
-	}
-	if dataFile == nil {
-		return nil, ErrDataFileNotFound
-	}
-
-	// 根据偏移读取对应的数据
-	logRecord, _, err := dataFile.ReadLogRecord(logRecordPos.Offset)
-	if err != nil {
-		return nil, err
-	}
-
-	// 判断是否已被删除
-	if logRecord.Type == data.LogRecordDeleted {
-		return nil, ErrKeyNotFound
-	}
-
-	return logRecord.Value, nil
+	// 获取 value 并返回
+	return db.getValueByPosition(logRecordPos)
 }
 
 // Delete 根据 key 删除数据
@@ -316,6 +295,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 	return nil
 }
 
+// 校验配置项是否合法
 func checkOptions(options Options) error {
 	if options.DirPath == "" {
 		return errors.New("database dir path is empty")
@@ -325,4 +305,31 @@ func checkOptions(options Options) error {
 	}
 
 	return nil
+}
+
+// 根据索引信息获取 value
+func (db *DB) getValueByPosition(logRecordPos *data.LogRecordPos) ([]byte, error) {
+	// 根据文件 id 找到对应的数据文件
+	var dataFile *data.DataFile
+	if db.activeFile.FileId == logRecordPos.Fid {
+		dataFile = db.activeFile
+	} else {
+		dataFile = db.olderFiles[logRecordPos.Fid]
+	}
+	if dataFile == nil {
+		return nil, ErrDataFileNotFound
+	}
+
+	// 根据偏移读取对应的数据
+	logRecord, _, err := dataFile.ReadLogRecord(logRecordPos.Offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// 判断是否已被删除
+	if logRecord.Type == data.LogRecordDeleted {
+		return nil, ErrKeyNotFound
+	}
+
+	return logRecord.Value, nil
 }
