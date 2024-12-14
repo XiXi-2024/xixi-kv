@@ -8,11 +8,17 @@ import (
 
 // Indexer 抽象索引操作接口 允许多种索引实现
 type Indexer interface {
+	// Put 新增元素
 	Put(key []byte, pos *data.LogRecordPos) bool
 
+	// Get 根据 key 获取元素
 	Get(key []byte) *data.LogRecordPos
 
+	// Delete 根据 key 删除元素
 	Delete(key []byte) bool
+
+	// Size 返回元素个数
+	Size() int
 
 	// Iterator 返回迭代器
 	Iterator(reverse bool) Iterator

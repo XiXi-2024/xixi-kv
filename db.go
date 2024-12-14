@@ -132,6 +132,77 @@ func (db *DB) Delete(key []byte) error {
 	return nil
 }
 
+// ListKeys 获取数据库中的所有 key
+func (db *DB) ListKeys() [][]byte {
+	iterator := db.index.Iterator(false)
+	defer iterator.Close()
+	keys := make([][]byte, db.index.Size())
+	var idx int
+	// 直接通过迭代器遍历获取所有 key
+	for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+		keys[idx] = iterator.Key()
+		idx++
+	}
+	return keys
+}
+
+// Fold 遍历数据库中所有 key/value 数据 由传入的函数逐个进行自定义操作 直到遍历完成或函数返回false终止遍历
+func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	// 利用索引迭代器进行遍历
+	iterator := db.index.Iterator(false)
+	for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+		value, err := db.getValueByPosition(iterator.Value())
+		if err != nil {
+			return err
+		}
+
+		// 将遍历的每个 key/value 交给传入的函数进行处理
+		if !fn(iterator.Key(), value) {
+			// 函数返回false时终止遍历
+			break
+		}
+	}
+	return nil
+}
+
+// Close 关闭数据库
+func (db *DB) Close() error {
+	if db.activeFile == nil {
+		return nil
+	}
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	// 关闭当前活跃文件
+	if err := db.activeFile.Close(); err != nil {
+		return err
+	}
+
+	// 关闭旧的数据文件
+	for _, file := range db.olderFiles {
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Sync 数据持久化
+func (db *DB) Sync() error {
+	if db.activeFile == nil {
+		return nil
+	}
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	// 仅持久化当前活跃文件即可
+	return db.activeFile.Sync()
+}
+
 // 将日志记录追加到当前活跃文件
 func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
 	db.mu.Lock()
