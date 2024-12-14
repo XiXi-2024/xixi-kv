@@ -1,5 +1,7 @@
 package xixi_bitcask_kv
 
+import "os"
+
 // Options 用户配置项
 type Options struct {
 	DirPath      string      // 数据文件目录
@@ -17,3 +19,11 @@ const (
 	// ART 自适应基数树索引
 	ART
 )
+
+// DefaultOptions 默认Options 供示例程序使用
+var DefaultOptions = Options{
+	DirPath:      os.TempDir(),
+	DataFileSize: 256 * 1024 * 1024, // 256MB
+	SyncWrites:   false,
+	IndexType:    BTree,
+}
