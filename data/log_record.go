@@ -1,6 +1,9 @@
 package data
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"hash/crc32"
+)
 
 // LogRecordType 日志记录状态枚举
 type LogRecordType = byte
@@ -39,16 +42,69 @@ type LogRecordPos struct {
 }
 
 // EncodeLogRecord 对 LogRecord 实例编码
+//
+//	+-------------+-------------+-------------+--------------+-------------+--------------+
+//	| crc 校验值  |  type 类型   |    key size |   value size |      key    |      value   |
+//	+-------------+-------------+-------------+--------------+-------------+--------------+
+//	    4字节          1字节        变长（最大5）   变长（最大5）     变长           变长
 func EncodeLogRecord(logRecord *LogRecord) ([]byte, int64) {
-	return nil, 0
+	// 按最大长度初始化 header 部分的字节数组
+	header := make([]byte, maxLogRecordHeaderSize)
+	// 写入 type
+	header[4] = logRecord.Type
+	// 写入 key size + value size 使用变长类型节省空间
+	var index = 5
+	index += binary.PutVarint(header[index:], int64(len(logRecord.Key)))
+	index += binary.PutVarint(header[index:], int64(len(logRecord.Value)))
+	// key + value 并计算日志记录的总长度创建对应的字节数组
+	var size = index + len(logRecord.Key) + len(logRecord.Value)
+	encBytes := make([]byte, size)
+	// 拷贝 header 部分
+	copy(encBytes[:index], header[:index])
+	// 拷贝 key 和 value
+	copy(encBytes[index:], logRecord.Key)
+	copy(encBytes[index+len(logRecord.Key):], logRecord.Value)
+	// 写入 crc 校验值 按小端序编码
+	crc := crc32.ChecksumIEEE(encBytes[4:])
+	binary.LittleEndian.PutUint32(encBytes[:4], crc)
+
+	return encBytes, int64(size)
 }
 
-// decodeLogRecordHeader 解码 获取日志记录的 Header 头部信息 返回实际长度
+// decodeLogRecordHeader 对 Header 头部解码
 func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
-	return nil, 0
+	// 长度校验
+	if len(buf) <= 4 {
+		return nil, 0
+	}
+
+	header := &logRecordHeader{
+		crc:        binary.LittleEndian.Uint32(buf[:4]),
+		recordType: buf[4],
+	}
+	var index = 5
+	// 获取实际 key size
+	keySize, n := binary.Varint(buf[index:])
+	header.keySize = uint32(keySize)
+	index += n
+	// 获取实际 value size
+	valueSize, n := binary.Varint(buf[index:])
+	header.valueSize = uint32(valueSize)
+	index += n
+
+	return header, int64(index)
 }
 
-// getLogRecordCRC 生成 CRC 值
+// getLogRecordCRC 计算日志记录的 crc 校验值
 func getLogRecordCRC(lr *LogRecord, header []byte) uint32 {
-	return 0
+	if lr == nil {
+		return 0
+	}
+
+	// 结合头部和 kv 数据计算
+	crc := crc32.ChecksumIEEE(header[:])
+	crc = crc32.Update(crc, crc32.IEEETable, lr.Key)
+	crc = crc32.Update(crc, crc32.IEEETable, lr.Value)
+
+	return crc
 }
