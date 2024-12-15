@@ -78,7 +78,26 @@ func EncodeLogRecord(logRecord *LogRecord) ([]byte, int64) {
 	return encBytes, int64(size)
 }
 
-// decodeLogRecordHeader 对 Header 头部解码
+// EncodeLogRecordPos 对索引位置信息实例编码
+func EncodeLogRecordPos(pos *LogRecordPos) []byte {
+	// 按实际长度存储, 节省空间
+	buf := make([]byte, binary.MaxVarintLen32+binary.MaxVarintLen64)
+	var index = 0
+	index += binary.PutVarint(buf[index:], int64(pos.Fid))
+	index += binary.PutVarint(buf[index:], pos.Offset)
+	return buf[:index]
+}
+
+// DecodeLogRecordPos 解码 LogRecordPos 实例
+func DecodeLogRecordPos(buf []byte) *LogRecordPos {
+	var index = 0
+	fileId, n := binary.Varint(buf[index:])
+	index += n
+	offset, _ := binary.Varint(buf[index:])
+	return &LogRecordPos{Fid: uint32(fileId), Offset: offset}
+}
+
+// decodeLogRecordHeader 解码 Header 头部
 func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
 	// 长度校验
 	if len(buf) <= 4 {

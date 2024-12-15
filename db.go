@@ -7,6 +7,7 @@ import (
 	"github.com/XiXi-2024/xixi-bitcask-kv/index"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ type DB struct {
 	olderFiles map[uint32]*data.DataFile // 旧数据文件 只读
 	index      index.Indexer             // 内存索引
 	seqNo      uint64                    // 事务序列号 全局递增
+	isMerging  bool                      // merge 执行状态标识
 }
 
 // Open 客户端初始化
@@ -46,8 +48,18 @@ func Open(options Options) (*DB, error) {
 		index:      index.NewIndexer(options.IndexType),
 	}
 
-	// 加载数据文件
+	// 加载 merge 临时目录中的数据文件
+	if err := db.loadMergeFiles(); err != nil {
+		return nil, err
+	}
+
+	// 加载数据目录中的数据文件
 	if err := db.loadDataFiles(); err != nil {
+		return nil, err
+	}
+
+	// 先尝试使用 hint 文件加载索引
+	if err := db.loadIndexFromHintFile(); err != nil {
 		return nil, err
 	}
 
@@ -331,6 +343,19 @@ func (db *DB) loadIndexFromDataFiles() error {
 		return nil
 	}
 
+	// 判断是否发生 merge
+	// 如果发生 merge, 从完成标识文件中获取未参与 merge 的最近数据文件id
+	hasMerge, nonMergeFileId := false, uint32(0)
+	mergeFinFileName := filepath.Join(db.options.DirPath, data.DataFileNameSuffix)
+	if _, err := os.Stat(mergeFinFileName); err == nil {
+		fid, err := db.getNonMergeFileId(db.options.DirPath)
+		if err != nil {
+			return err
+		}
+		hasMerge = true
+		nonMergeFileId = fid
+	}
+
 	// 更新索引逻辑封装为局部函数 实现复用
 	updateIndex := func(key []byte, typ data.LogRecordType, pos *data.LogRecordPos) {
 		// 判断日志记录状态
@@ -355,6 +380,10 @@ func (db *DB) loadIndexFromDataFiles() error {
 	// 遍历所有数据文件实例 逐个更新到内存索引中
 	for i, fid := range db.fileIds {
 		var fileId = uint32(fid)
+		// 当前数据文件对应的索引信息已通过 hint 文件加载 无需重复加载
+		if hasMerge && fileId < nonMergeFileId {
+			continue
+		}
 		var dataFile *data.DataFile
 		if fileId == db.activeFile.FileId {
 			dataFile = db.activeFile
@@ -388,6 +417,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 				// 日志记录属于事务提交
 				// 读取到带事务完成标识的记录时统一更新
 				if logRecord.Type == data.LogRecordTxnFinished {
+					// 更新对应事务的所有数据
 					for _, txnRecord := range transactionRecords[seqNo] {
 						updateIndex(txnRecord.Record.Key, txnRecord.Record.Type, txnRecord.Pos)
 					}

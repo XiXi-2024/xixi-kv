@@ -13,7 +13,16 @@ var (
 	ErrInvalidCRC = errors.New("invalid crc value, log record maybe corrupted")
 )
 
-const DataFileNameSuffix = ".data"
+const (
+	// DataFileNameSuffix 数据文件后缀
+	DataFileNameSuffix = ".data"
+
+	// HintFileName Hint 文件名称
+	HintFileName = "hint-index"
+
+	// MergeFinishedFileName merge 完成标识文件名称
+	MergeFinishedFileName = "merge-finished"
+)
 
 // DataFile 数据文件
 type DataFile struct {
@@ -25,7 +34,29 @@ type DataFile struct {
 // OpenDataFile 打开数据文件并构造对应实例
 func OpenDataFile(dirPath string, fileId uint32) (*DataFile, error) {
 	// 获取完整文件名称
-	fileName := filepath.Join(dirPath, fmt.Sprintf("%09d", fileId)+DataFileNameSuffix)
+	fileName := GetDataFileName(dirPath, fileId)
+	return newDataFile(fileName, fileId)
+}
+
+// OpenHintFile 打开 Hint 索引文件并构造对应实例
+func OpenHintFile(dirPath string) (*DataFile, error) {
+	fileName := filepath.Join(dirPath, HintFileName)
+	return newDataFile(fileName, 0)
+}
+
+// OpenMergeFinishedFile 打开 merge 完成标识文件并构造对应实例
+func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
+	fileName := filepath.Join(dirPath, MergeFinishedFileName)
+	return newDataFile(fileName, 0)
+}
+
+// GetDataFileName 获取完整数据文件名称
+func GetDataFileName(dirPath string, fileId uint32) string {
+	return filepath.Join(dirPath, fmt.Sprintf("%09d", fileId)+DataFileNameSuffix)
+}
+
+// 根据完整文件名称打开文件并创建实例返回
+func newDataFile(fileName string, fileId uint32) (*DataFile, error) {
 	// 获取该文件的 IOManager 实例
 	ioManager, err := fio.NewIOManager(fileName)
 	if err != nil {
@@ -102,6 +133,16 @@ func (df *DataFile) Write(buf []byte) error {
 	// 更新写入偏移量
 	df.WriteOff += int64(n)
 	return nil
+}
+
+// WriteHintRecord 写入构建索引相关信息数据
+func (df *DataFile) WriteHintRecord(key []byte, pos *LogRecordPos) error {
+	record := &LogRecord{
+		Key:   key,
+		Value: EncodeLogRecordPos(pos),
+	}
+	encRecord, _ := EncodeLogRecord(record)
+	return df.Write(encRecord)
 }
 
 // Sync 文件持久化
