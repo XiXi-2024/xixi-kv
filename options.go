@@ -12,10 +12,19 @@ type Options struct {
 
 // IteratorOptions 索引迭代器配置项
 type IteratorOptions struct {
-	// key 过滤前缀 默认为空
+	// key 过滤前缀, 默认为空
 	Prefix []byte
-	// 是否降序遍历 默认为false
+	// 是否降序遍历, 默认为false
 	Reverse bool
+}
+
+// WriteBatchOptions 批量写入配置项
+type WriteBatchOptions struct {
+	// 单个批次最大数据量
+	MaxBatchNum uint
+
+	// 提交事务时是否立即持久化
+	SyncWrites bool
 }
 
 type IndexerType = int8
@@ -28,7 +37,7 @@ const (
 	ART
 )
 
-// DefaultOptions 默认Options 供示例程序使用
+// DefaultOptions 默认Options, 供示例程序使用
 var DefaultOptions = Options{
 	DirPath:      os.TempDir(),
 	DataFileSize: 256 * 1024 * 1024, // 256MB
@@ -36,7 +45,14 @@ var DefaultOptions = Options{
 	IndexType:    BTree,
 }
 
+// DefaultIteratorOptions 默认迭代器Options, 供测试使用
 var DefaultIteratorOptions = IteratorOptions{
 	Prefix:  nil,
 	Reverse: false,
+}
+
+// DefaultWriteBatchOptions 默认事务 Options, 供测试使用
+var DefaultWriteBatchOptions = WriteBatchOptions{
+	MaxBatchNum: 10000,
+	SyncWrites:  true,
 }

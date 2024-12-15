@@ -1,6 +1,7 @@
 package xixi_bitcask_kv
 
 import (
+	"encoding/binary"
 	"errors"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
 	"github.com/XiXi-2024/xixi-bitcask-kv/index"
@@ -20,6 +21,7 @@ type DB struct {
 	activeFile *data.DataFile            // 当前活跃文件 允许读写
 	olderFiles map[uint32]*data.DataFile // 旧数据文件 只读
 	index      index.Indexer             // 内存索引
+	seqNo      uint64                    // 事务序列号 全局递增
 }
 
 // Open 客户端初始化
@@ -66,13 +68,13 @@ func (db *DB) Put(key []byte, value []byte) error {
 
 	// 构造 LogRecord 结构体
 	logRecord := &data.LogRecord{
-		Key:   key,
+		Key:   logRecordKeyWithSeq(key, nonTransactionSeqNo),
 		Value: value,
 		Type:  data.LogRecordNormal,
 	}
 
 	// 将日志记录追加到数据文件中
-	pos, err := db.appendLogRecord(logRecord)
+	pos, err := db.appendLogRecordWithLock(logRecord)
 	if err != nil {
 		return err
 	}
@@ -117,8 +119,11 @@ func (db *DB) Delete(key []byte) error {
 	}
 
 	// 构造 LogRecord 设置删除状态 作为墓碑值追加到数据文件中
-	logRecord := &data.LogRecord{Key: key, Type: data.LogRecordDeleted}
-	_, err := db.appendLogRecord(logRecord)
+	logRecord := &data.LogRecord{
+		Key:  logRecordKeyWithSeq(key, nonTransactionSeqNo),
+		Type: data.LogRecordDeleted,
+	}
+	_, err := db.appendLogRecordWithLock(logRecord)
 	if err != nil {
 		return err
 	}
@@ -203,11 +208,15 @@ func (db *DB) Sync() error {
 	return db.activeFile.Sync()
 }
 
-// 将日志记录追加到当前活跃文件
-func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
-	db.mu.Lock()
-	defer db.mu.Unlock()
+// 将日志记录追加到当前活跃文件 加锁
+func (db *DB) appendLogRecordWithLock(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	return db.appendLogRecord(logRecord)
+}
 
+// 将日志记录追加到当前活跃文件 不加锁
+func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
 	// 判断当前是否存在活跃文件 不存在则初始化
 	if db.activeFile == nil {
 		if err := db.setActiveDataFile(); err != nil {
@@ -322,6 +331,27 @@ func (db *DB) loadIndexFromDataFiles() error {
 		return nil
 	}
 
+	// 更新索引逻辑封装为局部函数 实现复用
+	updateIndex := func(key []byte, typ data.LogRecordType, pos *data.LogRecordPos) {
+		// 判断日志记录状态
+		var ok bool
+		if typ == data.LogRecordDeleted {
+			// 墓碑值 则删除对应的内存索引信息
+			ok = db.index.Delete(key)
+		} else {
+			ok = db.index.Put(key, pos)
+		}
+
+		if !ok {
+			panic("failed to update index at startup")
+		}
+	}
+
+	// 属于事务提交的记录的相关暂存数据
+	transactionRecords := make(map[uint64][]*data.TransactionRecords)
+	// 临时事务序列号 更新获取最大值
+	var currentSeqNo uint64 = nonTransactionSeqNo
+
 	// 遍历所有数据文件实例 逐个更新到内存索引中
 	for i, fid := range db.fileIds {
 		var fileId = uint32(fid)
@@ -345,12 +375,36 @@ func (db *DB) loadIndexFromDataFiles() error {
 
 			// 构建内存索引信息并保存
 			logRecordPos := &data.LogRecordPos{Fid: fileId, Offset: offset}
-			// 判断日志记录状态
-			if logRecord.Type == data.LogRecordDeleted {
-				// 墓碑值 则删除对应的内存索引信息
-				db.index.Delete(logRecord.Key)
+
+			// 解析 key, 提取真实 key 和 seq 事务前缀
+			realKey, seqNo := parseLogRecordKey(logRecord.Key)
+
+			// 判断当前日志记录是否属于事务提交
+			if seqNo == nonTransactionSeqNo {
+				// 日志记录属于非事务提交, 直接更新即可
+				// 索引存放的 key 是真实 key
+				updateIndex(realKey, logRecord.Type, logRecordPos)
 			} else {
-				db.index.Put(logRecord.Key, logRecordPos)
+				// 日志记录属于事务提交
+				// 读取到带事务完成标识的记录时统一更新
+				if logRecord.Type == data.LogRecordTxnFinished {
+					for _, txnRecord := range transactionRecords[seqNo] {
+						updateIndex(txnRecord.Record.Key, txnRecord.Record.Type, txnRecord.Pos)
+					}
+					delete(transactionRecords, seqNo)
+				} else {
+					logRecord.Key = realKey
+					// 暂存用于后续更新索引的相关数据
+					transactionRecords[seqNo] = append(transactionRecords[seqNo], &data.TransactionRecords{
+						Record: logRecord,
+						Pos:    logRecordPos,
+					})
+				}
+			}
+
+			// 序列号自增 获取最新的序列号
+			if seqNo > currentSeqNo {
+				currentSeqNo = seqNo
 			}
 
 			// 更新已读取位置偏移
@@ -362,6 +416,9 @@ func (db *DB) loadIndexFromDataFiles() error {
 			db.activeFile.WriteOff = offset
 		}
 	}
+
+	// 更新事务序列号 确保后续获取序列号唯一
+	db.seqNo = currentSeqNo
 
 	return nil
 }
@@ -403,4 +460,11 @@ func (db *DB) getValueByPosition(logRecordPos *data.LogRecordPos) ([]byte, error
 	}
 
 	return logRecord.Value, nil
+}
+
+// 解析 key, 提取真实 key 和 seq 事务前缀
+func parseLogRecordKey(key []byte) ([]byte, uint64) {
+	seqNo, n := binary.Uvarint(key)
+	realKey := key[n:]
+	return realKey, seqNo
 }

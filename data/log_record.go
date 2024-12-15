@@ -13,6 +13,7 @@ const (
 	LogRecordNormal LogRecordType = iota
 	// LogRecordDeleted 已删除
 	LogRecordDeleted
+	LogRecordTxnFinished
 )
 
 // 日志记录固定头部长度 其中 key 和 value 设置为可变长类型
@@ -39,6 +40,12 @@ type logRecordHeader struct {
 type LogRecordPos struct {
 	Fid    uint32 // 文件id 定位数据所在文件
 	Offset int64  // 数据偏移量 定位数据在文件中的位置
+}
+
+// TransactionRecords 事务相关的暂存数据
+type TransactionRecords struct {
+	Record *LogRecord
+	Pos    *LogRecordPos
 }
 
 // EncodeLogRecord 对 LogRecord 实例编码
