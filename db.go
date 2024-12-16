@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
 	"github.com/XiXi-2024/xixi-bitcask-kv/index"
 	"github.com/gofrs/flock"
 	"io"
@@ -121,6 +122,14 @@ func Open(options Options) (*DB, error) {
 	// 加载索引
 	if err := db.loadIndexFromDataFiles(); err != nil {
 		return nil, err
+	}
+
+	// 当前仅支持使用 MMap 实例加速数据加载, 加载完成后切换为标准文件 IO 实例
+	// todo 未来可自实现 MMap 实现的写入和持久化功能, 之后无需切换
+	if db.options.MMapAtStartup {
+		if err := db.resetIoType(); err != nil {
+			return nil, err
+		}
 	}
 
 	return db, nil
@@ -382,7 +391,7 @@ func (db *DB) setActiveDataFile() error {
 	}
 	// 获取新的数据文件
 	// 通过用户配置文件的配置项获取文件地址
-	dataFile, err := data.OpenDataFile(db.options.DirPath, initialFileId)
+	dataFile, err := data.OpenDataFile(db.options.DirPath, initialFileId, fio.StandardFIO)
 	if err != nil {
 		return err
 	}
@@ -420,7 +429,12 @@ func (db *DB) loadDataFiles() error {
 
 	// 遍历文件id 构建对应的数据文件实例
 	for i, fid := range fileIds {
-		dataFile, err := data.OpenDataFile(db.options.DirPath, uint32(fid))
+		// 根据配置项选择 IO 实现
+		ioType := fio.StandardFIO
+		if db.options.MMapAtStartup {
+			ioType = fio.MemoryMap
+		}
+		dataFile, err := data.OpenDataFile(db.options.DirPath, uint32(fid), ioType)
 		if err != nil {
 			return err
 		}
@@ -624,5 +638,21 @@ func (db *DB) loadSeqNo() error {
 
 	db.seqNo = seqNo
 	db.seqNoFileExists = true
+	return nil
+}
+
+// 将 IO 实现重置为标准文件 IO
+func (db *DB) resetIoType() error {
+	if db.activeFile == nil {
+		return nil
+	}
+	if err := db.activeFile.SetIOManager(db.options.DirPath, fio.StandardFIO); err != nil {
+		return err
+	}
+	for _, dataFile := range db.olderFiles {
+		if err := dataFile.SetIOManager(db.options.DirPath, fio.StandardFIO); err != nil {
+			return err
+		}
+	}
 	return nil
 }

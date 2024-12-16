@@ -35,28 +35,28 @@ type DataFile struct {
 }
 
 // OpenDataFile 打开数据文件并构造对应实例
-func OpenDataFile(dirPath string, fileId uint32) (*DataFile, error) {
+func OpenDataFile(dirPath string, fileId uint32, ioType fio.FileIOType) (*DataFile, error) {
 	// 获取完整文件名称
 	fileName := GetDataFileName(dirPath, fileId)
-	return newDataFile(fileName, fileId)
+	return newDataFile(fileName, fileId, ioType)
 }
 
 // OpenHintFile 打开 Hint 索引文件并构造对应实例
 func OpenHintFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, HintFileName)
-	return newDataFile(fileName, 0)
+	return newDataFile(fileName, 0, fio.StandardFIO)
 }
 
 // OpenMergeFinishedFile 打开 merge 完成标识文件并构造对应实例
 func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, MergeFinishedFileName)
-	return newDataFile(fileName, 0)
+	return newDataFile(fileName, 0, fio.StandardFIO)
 }
 
 // OpenSeqNoFile 打开事务序列号文件并构造对应实例
 func OpenSeqNoFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, SeqNoFileName)
-	return newDataFile(fileName, 0)
+	return newDataFile(fileName, 0, fio.StandardFIO)
 }
 
 // GetDataFileName 获取完整数据文件名称
@@ -65,9 +65,9 @@ func GetDataFileName(dirPath string, fileId uint32) string {
 }
 
 // 根据完整文件名称打开文件并创建实例返回
-func newDataFile(fileName string, fileId uint32) (*DataFile, error) {
+func newDataFile(fileName string, fileId uint32, ioType fio.FileIOType) (*DataFile, error) {
 	// 获取该文件的 IOManager 实例
-	ioManager, err := fio.NewIOManager(fileName)
+	ioManager, err := fio.NewIOManager(fileName, ioType)
 	if err != nil {
 		return nil, err
 	}
@@ -162,6 +162,19 @@ func (df *DataFile) Sync() error {
 // Close 文件关闭
 func (df *DataFile) Close() error {
 	return df.IoManager.Close()
+}
+
+// SetIOManager 设置数据文件的 IO 管理实现
+func (df *DataFile) SetIOManager(dirPath string, ioType fio.FileIOType) error {
+	if err := df.IoManager.Close(); err != nil {
+		return err
+	}
+	ioManager, err := fio.NewIOManager(GetDataFileName(dirPath, df.FileId), ioType)
+	if err != nil {
+		return err
+	}
+	df.IoManager = ioManager
+	return nil
 }
 
 // 从文件的指定 offset 开始读取 n 个字节

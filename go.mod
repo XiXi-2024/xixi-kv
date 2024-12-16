@@ -8,6 +8,7 @@ require (
 	github.com/plar/go-adaptive-radix-tree v1.0.6
 	github.com/stretchr/testify v1.10.0
 	go.etcd.io/bbolt v1.3.11
+	golang.org/x/exp v0.0.0-20241215155358-4a5509556b9e
 )
 
 require (

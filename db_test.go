@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
+	"time"
 )
 
 // 测试完成之后销毁 DB 数据目录
@@ -346,4 +347,33 @@ func TestDB_FileLock(t *testing.T) {
 	assert.NotNil(t, db2)
 	err = db2.Close()
 	assert.Nil(t, err)
+}
+
+func TestDB_OpenMMap(t *testing.T) {
+	opts := DefaultOptions
+	//opts.DirPath = addTestData(1100000, 10000)
+	opts.DirPath = "E:\\桌面\\Go\\bitcask-test1243205230"
+	t.Log(opts.DirPath)
+	opts.MMapAtStartup = true
+
+	now := time.Now()
+	db, err := Open(opts)
+	t.Log("open time ", time.Since(now))
+
+	assert.Nil(t, err)
+	assert.NotNil(t, db)
+}
+
+// 造数据, 数量为 count, 每个数据的 value 长度为 length, 返回数据目录路径
+func addTestData(count, length int) string {
+	opts := DefaultOptions
+	dir, _ := os.MkdirTemp("E:\\桌面\\Go", "bitcask-test")
+	opts.DirPath = dir
+	db, _ := Open(opts)
+	for i := 1; i < count; i++ {
+		db.Put(utils.GetTestKey(i), utils.RandomValue(length))
+	}
+	db.Sync()
+	db.Close()
+	return dir
 }
