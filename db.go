@@ -241,6 +241,7 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 
 	// 活跃文件剩余空间不足 新建数据文件作为新的活跃文件
 	if db.activeFile.WriteOff+size > db.options.DataFileSize {
+		// todo
 		// 持久化原活跃文件
 		if err := db.activeFile.Sync(); err != nil {
 			return nil, err

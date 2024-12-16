@@ -82,8 +82,8 @@ func (db *DB) Merge() error {
 	// 创建新的临时 DB 实例 供后续 merge 使用 避免并发冲突
 	mergeOptions := db.options
 	mergeOptions.DirPath = mergePath
-	mergeOptions.SyncWrites = false // 加快 merge 速度
-	mergeDB, err := Open(mergeOptions)
+	mergeOptions.SyncWrites = false    // 加快 merge 速度
+	mergeDB, err := Open(mergeOptions) // todo
 	if err != nil {
 		return err
 	}
