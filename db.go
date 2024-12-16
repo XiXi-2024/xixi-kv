@@ -3,8 +3,10 @@ package xixi_bitcask_kv
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
 	"github.com/XiXi-2024/xixi-bitcask-kv/index"
+	"github.com/gofrs/flock"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,8 +16,12 @@ import (
 	"sync"
 )
 
-// 事务序列号文件存放数据 Key
-const seqNoKey = "seq.no"
+const (
+	// 事务序列号文件存放数据 Key
+	seqNoKey = "seq.no"
+	// 文件锁名称
+	fileLockName = "flock"
+)
 
 // DB bitcask存储引擎客户端
 type DB struct {
@@ -29,6 +35,7 @@ type DB struct {
 	isMerging       bool                      // merge 执行状态标识
 	seqNoFileExists bool                      // 事务序列号文件存在标识
 	isInitial       bool                      // 首次初始化数据目录标识, 用于事务提交功能禁用校验
+	fileLock        *flock.Flock              // 文件锁实例, 用于释放锁操作
 }
 
 // Open 客户端初始化
@@ -46,7 +53,6 @@ func Open(options Options) (*DB, error) {
 			return nil, err
 		}
 	}
-
 	// 数据目录存在但为空, 视为首次加载
 	entries, err := os.ReadDir(options.DirPath)
 	if err != nil {
@@ -56,6 +62,18 @@ func Open(options Options) (*DB, error) {
 		isInitial = true
 	}
 
+	// 同一数据目录只允许由一个进程加载一次, 构建的 DB 实例唯一
+	// 基于文件互斥锁实现进程互斥
+	fileLock := flock.New(filepath.Join(options.DirPath, fileLockName))
+	hold, err := fileLock.TryLock() // 尝试获取锁
+	if err != nil {
+		return nil, err
+	}
+	// 获取锁失败, 抛出错误
+	if !hold {
+		return nil, ErrDatabaseIsUsing
+	}
+
 	// 初始化 DB 实例
 	db := &DB{
 		options:    options,
@@ -63,6 +81,7 @@ func Open(options Options) (*DB, error) {
 		olderFiles: make(map[uint32]*data.DataFile),
 		index:      index.NewIndexer(options.IndexType, options.DirPath, options.SyncWrites),
 		isInitial:  isInitial,
+		fileLock:   fileLock,
 	}
 
 	// 加载 merge 临时目录中的数据文件
@@ -224,6 +243,13 @@ func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
 
 // Close 关闭数据库
 func (db *DB) Close() error {
+	// 释放文件锁
+	defer func() {
+		if err := db.fileLock.Unlock(); err != nil {
+			panic(fmt.Sprintf("failed to unlock the directory, %v", err))
+		}
+	}()
+
 	if db.activeFile == nil {
 		return nil
 	}
