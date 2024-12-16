@@ -159,6 +159,7 @@ func (db *DB) Merge() error {
 }
 
 // 获取 merge 临时目录路径, 与数据目录同级
+// todo 后续重构 目前只能在类 Uinx 系统正常运行
 func (db *DB) getMergePath() string {
 	// 获取数据目录的父目录路径
 	dir := path.Dir(path.Clean(db.options.DirPath))
