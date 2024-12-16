@@ -36,6 +36,7 @@ type DB struct {
 	seqNoFileExists bool                      // 事务序列号文件存在标识
 	isInitial       bool                      // 首次初始化数据目录标识, 用于事务提交功能禁用校验
 	fileLock        *flock.Flock              // 文件锁实例, 用于释放锁操作
+	bytesWrite      uint                      // 累计写入字节数, 用于持久化策略
 }
 
 // Open 客户端初始化
@@ -346,10 +347,23 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 		return nil, err
 	}
 
-	// 根据用户配置决定是否立即持久化
-	if db.options.SyncWrites {
+	// 累加当前写入字节
+	db.bytesWrite += uint(size)
+
+	// 执行配置项指定的持久化策略
+	var needSync = db.options.SyncWrites
+	// 当指定累计到达阈值持久化策略且当前已达到阈值 或 指定立即持久化策略, 则执行持久化操作
+	if !needSync && db.options.BytesPerSync > 0 && db.bytesWrite >= db.options.BytesPerSync {
+		needSync = true
+	}
+	if needSync {
+		// 执行持久化操作
 		if err := db.activeFile.Sync(); err != nil {
 			return nil, err
+		}
+		// 持久化后清空累计值
+		if db.bytesWrite > 0 {
+			db.bytesWrite = 0
 		}
 	}
 
