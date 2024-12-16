@@ -4,7 +4,6 @@ import (
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -159,12 +158,11 @@ func (db *DB) Merge() error {
 }
 
 // 获取 merge 临时目录路径, 与数据目录同级
-// todo 后续重构 目前只能在类 Uinx 系统正常运行
 func (db *DB) getMergePath() string {
 	// 获取数据目录的父目录路径
-	dir := path.Dir(path.Clean(db.options.DirPath))
+	dir := filepath.Dir(filepath.Clean(db.options.DirPath))
 	// 获取数据目录名称
-	base := path.Base(db.options.DirPath)
+	base := filepath.Base(db.options.DirPath)
 	return filepath.Join(dir, base+mergeDirName)
 }
 
