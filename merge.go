@@ -194,6 +194,10 @@ func (db *DB) loadMergeFiles() error {
 		if entry.Name() == data.MergeFinishedFileName {
 			mergeFinished = true
 		}
+		// 过滤事务序列号文件, 其中包含的事务序列号非最新, 加载无意义
+		if entry.Name() == data.SeqNoFileName {
+			continue
+		}
 		mergeFileNames = append(mergeFileNames, entry.Name())
 	}
 

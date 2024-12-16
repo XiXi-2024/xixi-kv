@@ -16,15 +16,6 @@ type BTree struct {
 	lock *sync.RWMutex
 }
 
-func (bt *BTree) Iterator(reverse bool) Iterator {
-	if bt.tree == nil {
-		return nil
-	}
-	bt.lock.RLock()
-	defer bt.lock.RUnlock()
-	return newBTreeIterator(bt.tree, reverse)
-}
-
 func NewBTree() *BTree {
 	return &BTree{
 		tree: btree.New(33),
@@ -64,6 +55,19 @@ func (bt *BTree) Size() int {
 	return bt.tree.Len()
 }
 
+func (bt *BTree) Close() error {
+	return nil
+}
+
+func (bt *BTree) Iterator(reverse bool) Iterator {
+	if bt.tree == nil {
+		return nil
+	}
+	bt.lock.RLock()
+	defer bt.lock.RUnlock()
+	return newBTreeIterator(bt.tree, reverse)
+}
+
 // BTree 索引迭代器
 type btreeIterator struct {
 	curIndex int     // 当前遍历的下标位置
@@ -72,7 +76,7 @@ type btreeIterator struct {
 }
 
 func newBTreeIterator(tree *btree.BTree, reverse bool) *btreeIterator {
-	// 由于内置迭代方法无法满足个性化的迭代需求 将 B 树元素中元素取出存入数组中再进行迭代
+	// 内置迭代方法无法满足个性化的迭代需求 取出元素存入数组中再进行迭代
 	// 可能导致占用内存急剧膨胀
 	var idx int
 	values := make([]*Item, tree.Len())

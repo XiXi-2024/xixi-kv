@@ -22,25 +22,31 @@ type Indexer interface {
 
 	// Iterator 返回迭代器
 	Iterator(reverse bool) Iterator
+
+	// Close 关闭索引
+	Close() error
 }
 
 type IndexType = int8
 
 const (
-	// Btree 索引
+	// Btree B树索引
 	Btree IndexType = iota + 1
 	// ART 自适应基数树索引
 	ART
+	// BPTree B+树索引
+	BPTree
 )
 
 // NewIndexer 根据类型创建对应的索引实现
-func NewIndexer(typ IndexType) Indexer {
+func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 	switch typ {
 	case Btree:
 		return NewBTree()
 	case ART:
-		// todo
-		return nil
+		return NewART()
+	case BPTree:
+		return NewBPlusTree(dirPath, sync)
 	default:
 		panic("unsupported index type")
 	}

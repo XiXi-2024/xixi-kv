@@ -22,6 +22,9 @@ const (
 
 	// MergeFinishedFileName merge 完成标识文件名称
 	MergeFinishedFileName = "merge-finished"
+
+	// SeqNoFileName 事务序列号文件名称
+	SeqNoFileName = "merge-finished"
 )
 
 // DataFile 数据文件
@@ -47,6 +50,12 @@ func OpenHintFile(dirPath string) (*DataFile, error) {
 // OpenMergeFinishedFile 打开 merge 完成标识文件并构造对应实例
 func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, MergeFinishedFileName)
+	return newDataFile(fileName, 0)
+}
+
+// OpenSeqNoFile 打开事务序列号文件并构造对应实例
+func OpenSeqNoFile(dirPath string) (*DataFile, error) {
+	fileName := filepath.Join(dirPath, SeqNoFileName)
 	return newDataFile(fileName, 0)
 }
 

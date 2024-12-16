@@ -32,9 +32,10 @@ type IndexerType = int8
 const (
 	// BTree 索引
 	BTree IndexerType = iota + 1
-
 	// ART 自适应基数树索引
 	ART
+	// BPlusTree B+树索引
+	BPlusTree
 )
 
 // DefaultOptions 默认Options, 供示例程序使用

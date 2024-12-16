@@ -23,6 +23,11 @@ type WriteBatch struct {
 
 // NewWriteBatch WriteBatch实例初始化
 func (db *DB) NewWriteBatch(opts WriteBatchOptions) *WriteBatch {
+	// 如果选择 B+ 树索引实现、事务序列号未加载、非首次加载数据目录, 则禁用事务提交功能
+	// 首次加载时事务序列号为 0, 但无法加载得到, 故进行特殊判断
+	if db.options.IndexType == BPlusTree && !db.seqNoFileExists && !db.isInitial {
+		panic("cannot use write batch, seq no file not exists")
+	}
 	return &WriteBatch{
 		options:       opts,
 		mu:            new(sync.Mutex),
