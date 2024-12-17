@@ -167,6 +167,13 @@ func Open(options Options) (*DB, error) {
 	return db, nil
 }
 
+// Backup 备份数据库, 将数据目录中的数据文件拷贝到指定目录中
+func (db *DB) Backup(dir string) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	return utils.CopyDir(db.options.DirPath, dir, []string{fileLockName})
+}
+
 // Put 写入key/value数据
 func (db *DB) Put(key []byte, value []byte) error {
 	// 判断 key 是否合法
