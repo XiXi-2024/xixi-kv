@@ -220,6 +220,10 @@ func (db *DB) loadMergeFiles() error {
 		if entry.Name() == data.SeqNoFileName {
 			continue
 		}
+		// 过滤文件锁文件
+		if entry.Name() == fileLockName {
+			continue
+		}
 		mergeFileNames = append(mergeFileNames, entry.Name())
 	}
 
