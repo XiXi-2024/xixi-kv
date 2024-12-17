@@ -2,6 +2,7 @@ package xixi_bitcask_kv
 
 import (
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
 	"io"
 	"os"
 	"path/filepath"
@@ -30,6 +31,28 @@ func (db *DB) Merge() error {
 	if db.isMerging {
 		db.mu.Unlock()
 		return ErrMergeIsProgress
+	}
+
+	// 判断无效数据占比是否达到阈值
+	totalSize, err := utils.DirSize(db.options.DirPath)
+	if err != nil {
+		db.mu.Unlock()
+		return err
+	}
+	if float32(db.reclaimSize)/float32(totalSize) < db.options.DataFileMergeRatio {
+		db.mu.Unlock()
+		return ErrMergeRatioUnreached
+	}
+
+	// 判断数据目录所在磁盘剩余空间是否能容纳 merge 后的数据量
+	availableDiskSize, err := utils.AvailableDiskSizeWin(db.options.DirPath)
+	if err != nil {
+		db.mu.Unlock()
+		return err
+	}
+	if uint64(totalSize-db.reclaimSize) >= availableDiskSize {
+		db.mu.Unlock()
+		return ErrNoEnoughSpaceForMerge
 	}
 
 	// 更新 merge 状态

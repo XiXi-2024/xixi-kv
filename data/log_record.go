@@ -40,6 +40,7 @@ type logRecordHeader struct {
 type LogRecordPos struct {
 	Fid    uint32 // 文件id 定位数据所在文件
 	Offset int64  // 数据偏移量 定位数据在文件中的位置
+	Size   uint32 // 数据在磁盘的大小
 }
 
 // TransactionRecords 事务相关的暂存数据
@@ -85,6 +86,7 @@ func EncodeLogRecordPos(pos *LogRecordPos) []byte {
 	var index = 0
 	index += binary.PutVarint(buf[index:], int64(pos.Fid))
 	index += binary.PutVarint(buf[index:], pos.Offset)
+	index += binary.PutVarint(buf[index:], int64(pos.Size))
 	return buf[:index]
 }
 
@@ -93,8 +95,10 @@ func DecodeLogRecordPos(buf []byte) *LogRecordPos {
 	var index = 0
 	fileId, n := binary.Varint(buf[index:])
 	index += n
-	offset, _ := binary.Varint(buf[index:])
-	return &LogRecordPos{Fid: uint32(fileId), Offset: offset}
+	offset, n := binary.Varint(buf[index:])
+	index += n
+	size, n := binary.Varint(buf[index:])
+	return &LogRecordPos{Fid: uint32(fileId), Offset: offset, Size: uint32(size)}
 }
 
 // decodeLogRecordHeader 解码 Header 头部

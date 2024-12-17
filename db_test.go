@@ -364,7 +364,34 @@ func TestDB_OpenMMap(t *testing.T) {
 	assert.NotNil(t, db)
 }
 
-// 造数据, 数量为 count, 每个数据的 value 长度为 length, 返回数据目录路径
+func TestDB_Stat(t *testing.T) {
+	opts := DefaultOptions
+	dir, _ := os.MkdirTemp("", "bitcask-go-stat")
+	opts.DirPath = dir
+	//t.Log(dir)
+	db, err := Open(opts)
+	//defer destroyDB(db) // win系统手动删除
+	assert.Nil(t, err)
+	assert.NotNil(t, db)
+
+	for i := 100; i < 10000; i++ {
+		err := db.Put(utils.GetTestKey(i), utils.RandomValue(128))
+		assert.Nil(t, err)
+	}
+	for i := 100; i < 1000; i++ {
+		err := db.Delete(utils.GetTestKey(i))
+		assert.Nil(t, err)
+	}
+	for i := 2000; i < 5000; i++ {
+		err := db.Put(utils.GetTestKey(i), utils.RandomValue(128))
+		assert.Nil(t, err)
+	}
+	stat := db.Stat()
+	//t.Log(stat)
+	assert.NotNil(t, stat)
+}
+
+// 创建数据目录并写入若干数据, 返回目录路径
 func addTestData(count, length int) string {
 	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("E:\\桌面\\Go", "bitcask-test")

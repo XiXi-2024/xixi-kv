@@ -4,12 +4,13 @@ import "os"
 
 // Options 用户配置项
 type Options struct {
-	DirPath       string      // 数据文件目录
-	DataFileSize  int64       // 数据文件存储阈值
-	SyncWrites    bool        // 每次写数据是否立即持久化标识
-	BytesPerSync  uint        // 触发持久化操作的字节写入阈值
-	IndexType     IndexerType // 索引类型
-	MMapAtStartup bool        // 是否启用 MMap 加速数据加载标识
+	DirPath            string      // 数据文件目录
+	DataFileSize       int64       // 数据文件存储阈值
+	SyncWrites         bool        // 每次写数据是否立即持久化标识
+	BytesPerSync       uint        // 触发持久化操作的字节写入阈值
+	IndexType          IndexerType // 索引类型
+	MMapAtStartup      bool        // 是否启用 MMap 加速数据加载标识
+	DataFileMergeRatio float32     // 执行 merge 的无效数据占比阈值
 }
 
 // IteratorOptions 索引迭代器配置项
@@ -42,12 +43,13 @@ const (
 
 // DefaultOptions 默认Options, 供示例程序使用
 var DefaultOptions = Options{
-	DirPath:       os.TempDir(),
-	DataFileSize:  256 * 1024 * 1024, // 256MB
-	SyncWrites:    false,             // 默认非立即持久化
-	BytesPerSync:  0,                 // 默认值 0, 表示不开启功能
-	IndexType:     BTree,
-	MMapAtStartup: true, // 默认启用
+	DirPath:            os.TempDir(),      // 默认使用系统临时目录
+	DataFileSize:       256 * 1024 * 1024, // 256MB
+	SyncWrites:         false,             // 默认非立即持久化
+	BytesPerSync:       0,                 // 默认值 0, 表示不开启功能
+	IndexType:          BTree,             // 默认使用 B 树
+	MMapAtStartup:      true,              // 默认启用
+	DataFileMergeRatio: 0.5,               // 无效数据占一半时清理
 }
 
 // DefaultIteratorOptions 默认迭代器Options, 供测试使用
