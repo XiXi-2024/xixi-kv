@@ -17,10 +17,10 @@ const (
 	// DataFileNameSuffix 数据文件后缀
 	DataFileNameSuffix = ".data"
 
-	// HintFileName Hint 文件名称
+	// HintFileName Hint文件名称
 	HintFileName = "hint-index"
 
-	// MergeFinishedFileName merge 完成标识文件名称
+	// MergeFinishedFileName merge完成标识文件名称
 	MergeFinishedFileName = "merge-finished"
 
 	// SeqNoFileName 事务序列号文件名称
@@ -30,30 +30,29 @@ const (
 // DataFile 数据文件
 type DataFile struct {
 	FileId    uint32        // 文件id
-	WriteOff  int64         // 文件已写入偏移 作为活跃文件时使用
-	IoManager fio.IOManager // io 读写管理
+	WriteOff  int64         // 文件已写入偏移量, 用于活跃文件写入
+	IoManager fio.IOManager // IO读写管理
 }
 
-// OpenDataFile 打开数据文件并构造对应实例
+// OpenDataFile 打开数据文件并构造 DataFile 实例
 func OpenDataFile(dirPath string, fileId uint32, ioType fio.FileIOType) (*DataFile, error) {
-	// 获取完整文件名称
 	fileName := GetDataFileName(dirPath, fileId)
 	return newDataFile(fileName, fileId, ioType)
 }
 
-// OpenHintFile 打开 Hint 索引文件并构造对应实例
+// OpenHintFile 打开 Hint 索引文件并构造 DataFile 实例
 func OpenHintFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, HintFileName)
 	return newDataFile(fileName, 0, fio.StandardFIO)
 }
 
-// OpenMergeFinishedFile 打开 merge 完成标识文件并构造对应实例
+// OpenMergeFinishedFile 打开 merge 完成标识文件并构造 DataFile 实例
 func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, MergeFinishedFileName)
 	return newDataFile(fileName, 0, fio.StandardFIO)
 }
 
-// OpenSeqNoFile 打开事务序列号文件并构造对应实例
+// OpenSeqNoFile 打开事务序列号文件并构造 DataFile 实例
 func OpenSeqNoFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, SeqNoFileName)
 	return newDataFile(fileName, 0, fio.StandardFIO)
@@ -64,9 +63,9 @@ func GetDataFileName(dirPath string, fileId uint32) string {
 	return filepath.Join(dirPath, fmt.Sprintf("%09d", fileId)+DataFileNameSuffix)
 }
 
-// 根据完整文件名称打开文件并创建实例返回
+// 根据完整文件名称打开文件并构造 DataFile 实例
 func newDataFile(fileName string, fileId uint32, ioType fio.FileIOType) (*DataFile, error) {
-	// 获取该文件的 IOManager 实例
+	// 获取该文件的 IO 管理实例
 	ioManager, err := fio.NewIOManager(fileName, ioType)
 	if err != nil {
 		return nil, err
@@ -80,16 +79,17 @@ func newDataFile(fileName string, fileId uint32, ioType fio.FileIOType) (*DataFi
 	}, nil
 }
 
-// ReadLogRecord 根据 offset 从数据文件中获取指定日志记录
+// ReadLogRecord 对当前数据文件从指定偏移量开始读取一条日志记录
+// 返回一个 LogRecord 实例和对应字节长度
 func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
-	// 获取当前文件长度
+	// 获取当前文件总长度
 	fileSize, err := df.IoManager.Size()
 	if err != nil {
 		return nil, 0, err
 	}
-	// 以固定的最大长度读取 header 头部信息
-	// 如果固定长度超过文件剩余长度 则读取剩余长度数据 避免 EOF
+	// 以固定最大长度读取 Header 头部
 	var headerBytes int64 = maxLogRecordHeaderSize
+	// 如果固定最大长度超过文件剩余长度则读取剩余长度数据, 避免 EOF
 	if offset+maxLogRecordHeaderSize > fileSize {
 		headerBytes = fileSize - offset
 	}
@@ -100,7 +100,8 @@ func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 
 	// 解码
 	header, headerSize := decodeLogRecordHeader(headerBuf)
-	// 已读取到文件末尾 无数据返回 EOF 错误
+	// 已读取到文件末尾, 无数据返回 EOF 错误
+	// todo 是否无效判断？
 	if header == nil {
 		return nil, 0, io.EOF
 	}
@@ -124,7 +125,7 @@ func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 		logRecord.Value = kvBuf[keySize:]
 	}
 
-	// 校验数据完整性 生成 CRC 值进行比较
+	// 校验数据完整性, 生成 CRC 值进行比较
 	crc := getLogRecordCRC(logRecord, headerBuf[crc32.Size:headerSize])
 	if crc != header.crc {
 		return nil, 0, ErrInvalidCRC
@@ -146,6 +147,7 @@ func (df *DataFile) Write(buf []byte) error {
 
 // WriteHintRecord 写入构建索引相关信息数据
 func (df *DataFile) WriteHintRecord(key []byte, pos *LogRecordPos) error {
+	// 转换为对应的 LogRecord 实例进行写入
 	record := &LogRecord{
 		Key:   key,
 		Value: EncodeLogRecordPos(pos),
@@ -166,9 +168,11 @@ func (df *DataFile) Close() error {
 
 // SetIOManager 设置数据文件的 IO 管理实现
 func (df *DataFile) SetIOManager(dirPath string, ioType fio.FileIOType) error {
+	// 关闭原文件
 	if err := df.IoManager.Close(); err != nil {
 		return err
 	}
+	// 重新打开文件
 	ioManager, err := fio.NewIOManager(GetDataFileName(dirPath, df.FileId), ioType)
 	if err != nil {
 		return err
@@ -177,7 +181,7 @@ func (df *DataFile) SetIOManager(dirPath string, ioType fio.FileIOType) error {
 	return nil
 }
 
-// 从文件的指定 offset 开始读取 n 个字节
+// 对当前数据文件从 offset 开始读取 n 个字节
 func (df *DataFile) readNBytes(n int64, offset int64) (b []byte, err error) {
 	b = make([]byte, n)
 	_, err = df.IoManager.Read(b, offset)

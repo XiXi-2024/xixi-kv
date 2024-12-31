@@ -12,7 +12,7 @@ func TestDB_NewIterator(t *testing.T) {
 	dir, _ := os.MkdirTemp("", "bitcask-go-iterator-1")
 	opts.DirPath = dir
 	db, err := Open(opts)
-	defer destroyDB(db)
+	//defer destroyDB(db) // win系统手动删除
 	assert.Nil(t, err)
 	assert.NotNil(t, db)
 

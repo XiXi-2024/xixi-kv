@@ -73,17 +73,17 @@ func (art *AdaptiveRadixTree) Iterator(reverse bool) Iterator {
 type artIterator struct {
 	curIndex int     // 当前遍历的下标位置
 	reverse  bool    // 是否降序遍历
-	values   []*Item // 类型复用 存放 key + 位置索引信息
+	values   []*Item // 类型复用, 存放 key + 位置索引信息
 }
 
 func newARTIterator(tree goart.Tree, reverse bool) *artIterator {
-	// 内置迭代方法无法满足个性化的迭代需求 取出元素存入数组中再进行迭代
+	// 内置迭代方法无法满足个性化的迭代需求, 取出元素存入数组中再进行迭代
 	var idx int
 	if reverse {
 		idx = tree.Size() - 1
 	}
 	values := make([]*Item, tree.Size())
-	// 定义函数参数 处理遍历的每个元素
+	// 定义函数参数, 处理遍历的每个元素
 	saveValues := func(node goart.Node) bool {
 		item := &Item{
 			key: node.Key(),

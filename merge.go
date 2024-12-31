@@ -18,6 +18,7 @@ const (
 	mergeFinishedKey = "merge.finished"
 )
 
+// todo 当前仅支持显式触发, 后续可实现定时任务, 监控数据状态, 进行自动清理
 func (db *DB) Merge() error {
 	// 不存在活跃文件时, 数据库为空, 直接返回
 	if db.activeFile == nil {
@@ -33,7 +34,7 @@ func (db *DB) Merge() error {
 		return ErrMergeIsProgress
 	}
 
-	// 判断无效数据占比是否达到阈值
+	// 判断无效数据占比是否达到阈值, 未达到则不执行 merge
 	totalSize, err := utils.DirSize(db.options.DirPath)
 	if err != nil {
 		db.mu.Unlock()
@@ -75,7 +76,7 @@ func (db *DB) Merge() error {
 	// 记录未参与 merge 的最近文件 id
 	nonMergeFileId := db.activeFile.FileId
 
-	// 取出所有参与 merge 的数据文件
+	// 收集所有参与 merge 的数据文件实例
 	var mergeFiles []*data.DataFile
 	for _, file := range db.olderFiles {
 		mergeFiles = append(mergeFiles, file)
@@ -83,6 +84,7 @@ func (db *DB) Merge() error {
 	db.mu.Unlock()
 
 	// 升序排序, 供后续顺序 merge
+	// todo 无效操作, 可取消
 	sort.Slice(mergeFiles, func(i, j int) bool {
 		return mergeFiles[i].FileId < mergeFiles[j].FileId
 	})
@@ -101,11 +103,11 @@ func (db *DB) Merge() error {
 		return err
 	}
 
-	// 创建新的临时 DB 实例 供后续 merge 使用 避免并发冲突
+	// 创建新的临时 DB 实例操作临时目录, 避免并发冲突
 	mergeOptions := db.options
 	mergeOptions.DirPath = mergePath
-	mergeOptions.SyncWrites = false    // 加快 merge 速度
-	mergeDB, err := Open(mergeOptions) // todo
+	mergeOptions.SyncWrites = false // 加快 merge 速度
+	mergeDB, err := Open(mergeOptions)
 	if err != nil {
 		return err
 	}
@@ -134,6 +136,7 @@ func (db *DB) Merge() error {
 			if logRecordPos != nil &&
 				logRecordPos.Fid == dataFile.FileId && logRecordPos.Offset == offset {
 				// 对于有效数据, 直接清除事务标记
+				// todo 不应该在这里清除
 				logRecord.Key = logRecordKeyWithSeq(realKey, nonTransactionSeqNo)
 				// 将当前有效数据重写到 merge 临时目录的活跃文件中
 				pos, err := mergeDB.appendLogRecord(logRecord)
@@ -216,7 +219,7 @@ func (db *DB) loadMergeFiles() error {
 		if entry.Name() == data.MergeFinishedFileName {
 			mergeFinished = true
 		}
-		// 过滤事务序列号文件, 其中包含的事务序列号非最新, 加载无意义
+		// 过滤事务 id 文件, 其中包含的事务 id 非最新, 加载无意义
 		if entry.Name() == data.SeqNoFileName {
 			continue
 		}
@@ -232,6 +235,7 @@ func (db *DB) loadMergeFiles() error {
 		return nil
 	}
 
+	// 从标识文件中取出未参与 merge 的最近数据文件 id
 	nonMergeFileId, err := db.getNonMergeFileId(mergePath)
 	if err != nil {
 		return err
@@ -263,6 +267,7 @@ func (db *DB) loadMergeFiles() error {
 }
 
 // 获取 merge 完成标识文件中保存的未参与 merge 的最近数据文件id
+// todo 是否可重构为取消 dirPath 参数
 func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
 	mergeFinishedFile, err := data.OpenMergeFinishedFile(dirPath)
 	if err != nil {

@@ -5,10 +5,10 @@ import (
 	"github.com/XiXi-2024/xixi-bitcask-kv/index"
 )
 
-// Iterator 索引迭代器 面向用户
+// Iterator 索引迭代器, 面向用户
 type Iterator struct {
-	indexIter index.Iterator  // 索引迭代器 遍历 key
-	db        *DB             // DB 实例 获取 value
+	indexIter index.Iterator  // 索引迭代器, 遍历 key
+	db        *DB             // DB 实例, 用于获取 value
 	options   IteratorOptions // 用户配置项
 }
 

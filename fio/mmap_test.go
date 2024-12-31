@@ -3,12 +3,15 @@ package fio
 import (
 	"github.com/stretchr/testify/assert"
 	"io"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
+// 读取
 func TestMMap_Read(t *testing.T) {
-	path := filepath.Join("E:\\桌面\\Go", "mmap-a.data")
+	path := filepath.Join(os.TempDir(), "mmap-a.data")
+	//t.Log(path)
 	//defer destroyFile(path) // win 环境下手动删除
 	mmapIO, err := NewMMapIOManager(path)
 	assert.Nil(t, err)

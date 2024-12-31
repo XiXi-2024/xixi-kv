@@ -27,6 +27,7 @@ func (mmap *MMap) Read(b []byte, offset int64) (int, error) {
 	return mmap.readerAt.ReadAt(b, offset)
 }
 
+// todo 后续提供其它实现, 并替换该实现下的其它使用逻辑
 func (mmap *MMap) Write([]byte) (int, error) {
 	// 无需实现
 	panic("not implemented")

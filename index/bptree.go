@@ -9,7 +9,7 @@ import (
 // 索引文件名称
 const bptreeIndexFileName = "bptree-index"
 
-// Bucket名称
+// Bucket 名称
 var indexBucketName = []byte("bitcask-index")
 
 // BPlusTree 可持久化 B+ 树索引实现
@@ -120,7 +120,7 @@ type bptreeIterator struct {
 }
 
 func newBptreeIterator(tree *bbolt.DB, reverse bool) *bptreeIterator {
-	// 手动开启事务 迭代结束时提交
+	// 手动开启事务, 迭代结束时提交
 	tx, err := tree.Begin(false)
 	if err != nil {
 		panic("failed to begin a transaction")

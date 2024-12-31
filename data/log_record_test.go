@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// 对日志记录编码
 func TestEncodeLogRecord(t *testing.T) {
 	// 正常情况
 	rec1 := &LogRecord{
@@ -37,6 +38,7 @@ func TestEncodeLogRecord(t *testing.T) {
 	assert.Greater(t, n3, int64(5))
 }
 
+// 对日志记录头部解码
 func Test_decodeLogRecordHeader(t *testing.T) {
 	// 正常情况
 	headerBuf1 := []byte{104, 82, 240, 150, 0, 8, 20}
@@ -70,6 +72,7 @@ func Test_decodeLogRecordHeader(t *testing.T) {
 	assert.Equal(t, uint32(10), h3.valueSize)
 }
 
+// 根据日志记录内容生成 CRC 码
 func Test_getLogRecordCRC(t *testing.T) {
 	rec1 := &LogRecord{
 		Key:   []byte("name"),

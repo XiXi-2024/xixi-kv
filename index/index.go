@@ -6,9 +6,10 @@ import (
 	"github.com/google/btree"
 )
 
-// Indexer 抽象索引操作接口 允许多种索引实现
+// Indexer 抽象索引操作接口
 type Indexer interface {
 	// Put 新增元素
+	// 重复添加会覆盖并返回旧值
 	Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
 
 	// Get 根据 key 获取元素
@@ -20,13 +21,14 @@ type Indexer interface {
 	// Size 返回元素个数
 	Size() int
 
-	// Iterator 返回迭代器
+	// Iterator 返回新的迭代器
 	Iterator(reverse bool) Iterator
 
 	// Close 关闭索引
 	Close() error
 }
 
+// IndexType 索引实现类型枚举
 type IndexType = int8
 
 const (
@@ -39,6 +41,7 @@ const (
 )
 
 // NewIndexer 根据类型创建对应的索引实现
+// todo 可设置为 DB 方法？
 func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 	switch typ {
 	case Btree:
@@ -53,6 +56,7 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 }
 
 // Item BTree节点实现
+// todo 应当位于具体索引的文件中定义？
 type Item struct {
 	key []byte
 	pos *data.LogRecordPos
@@ -74,7 +78,7 @@ type Iterator interface {
 	// Next 遍历下一个元素
 	Next()
 
-	// Valid 判断是否遍历完成
+	// Valid 判断是否未到达末尾
 	Valid() bool
 
 	// Key 返回当前位置的 key

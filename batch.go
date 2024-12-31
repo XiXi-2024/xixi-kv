@@ -18,10 +18,10 @@ type WriteBatch struct {
 	options       WriteBatchOptions
 	mu            *sync.Mutex
 	db            *DB
-	pendingWrites map[string]*data.LogRecord // 用户批量写入暂存数据
+	pendingWrites map[string]*data.LogRecord // 暂存数据
 }
 
-// NewWriteBatch WriteBatch实例初始化
+// NewWriteBatch WriteBatch 实例初始化
 func (db *DB) NewWriteBatch(opts WriteBatchOptions) *WriteBatch {
 	// 如果选择 B+ 树索引实现、事务序列号未加载、非首次加载数据目录, 则禁用事务提交功能
 	// 首次加载时事务序列号为 0, 但无法加载得到, 故进行特殊判断
@@ -50,7 +50,7 @@ func (wb *WriteBatch) Put(key, value []byte) error {
 	return nil
 }
 
-// Delete 删除数据
+// Delete 根据 key 删除元素
 func (wb *WriteBatch) Delete(key []byte) error {
 	if len(key) == 0 {
 		return ErrKeyIsEmpty
@@ -59,48 +59,53 @@ func (wb *WriteBatch) Delete(key []byte) error {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
-	// key不存在直接返回
 	logRecordPos := wb.db.index.Get(key)
+
+	// 待删除元素未提交持久化
 	if logRecordPos == nil {
+		// 直接删除缓存
 		if wb.pendingWrites[string(key)] != nil {
 			delete(wb.pendingWrites, string(key))
 		}
 		return nil
 	}
 
-	// 仅暂存
+	// 待删除元素已持久化, 添加墓碑值缓存
 	logRecord := &data.LogRecord{Key: key, Type: data.LogRecordDeleted}
 	wb.pendingWrites[string(key)] = logRecord
 	return nil
 }
 
-// Commit 事务提交 将暂存数据持久化 并更新内存索引
+// Commit 事务提交, 将暂存数据持久化并更新索引
 func (wb *WriteBatch) Commit() error {
+	// 对 WB 实例加锁
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 
-	// 无数据 直接返回
+	// 缓存为空
 	if len(wb.pendingWrites) == 0 {
 		return nil
 	}
 
-	// 超过最大数据量 直接返回
+	// 已缓存个数超过配置的最大数量
 	if uint(len(wb.pendingWrites)) > wb.options.MaxBatchNum {
 		return ErrExceedMaxBatchNum
 	}
 
-	// 加锁保证事务串行化执行
+	// 对 DB 实例加锁, 串行化实现隔离性
 	wb.db.mu.Lock()
 	defer wb.db.mu.Unlock()
 
 	// 获取当前最新的事务序列号
 	seqNo := atomic.AddUint64(&wb.db.seqNo, 1)
 
-	// 数据持久化
+	// 遍历当前事务客户端的写入缓存, 依次进行写入
+	// 由于缓存包含最新数据, 故允许无序遍历
 	positions := make(map[string]*data.LogRecordPos)
 	for _, record := range wb.pendingWrites {
-		// 批量提交时已加锁 无需重复加锁 使用不加锁的appendLogRecord方法
+		// 无需重复加锁, 使用不加锁的 appendLogRecord 方法
 		logRecordPos, err := wb.db.appendLogRecord(&data.LogRecord{
+			// 将 key 和 seqNo 进行合并, 节省空间
 			Key:   logRecordKeyWithSeq(record.Key, seqNo),
 			Value: record.Value,
 			Type:  record.Type,
@@ -110,11 +115,11 @@ func (wb *WriteBatch) Commit() error {
 			return err
 		}
 
-		// 索引信息暂存 数据持久化后统一添加
+		// 暂存索引信息, 所有数据写入完成后统一更新索引
 		positions[string(record.Key)] = logRecordPos
 	}
 
-	// 最后追加带事务完成标识的日志记录
+	// 事务成功, 追加带事务完成标识的日志记录
 	finishedRecord := &data.LogRecord{
 		Key:  logRecordKeyWithSeq(txnFinKey, seqNo),
 		Type: data.LogRecordTxnFinished,
@@ -137,7 +142,8 @@ func (wb *WriteBatch) Commit() error {
 		if record.Type == data.LogRecordNormal {
 			oldPos = wb.db.index.Put(record.Key, pos)
 		}
-		// 追加形式 遇到删除状态的日志记录同样更新索引
+		// 追加形式, 遇到删除状态的日志记录同样更新索引
+		// todo 未统计 pos 本身的字节数
 		if record.Type == data.LogRecordDeleted {
 			oldPos, _ = wb.db.index.Delete(record.Key)
 		}
@@ -152,11 +158,13 @@ func (wb *WriteBatch) Commit() error {
 	return nil
 }
 
-// 将 key 和 seq 合并编码
+// 将 key 和 seqNo 合并编码
 func logRecordKeyWithSeq(key []byte, seqNo uint64) []byte {
+	// 获取事务 id 实际占用字节数
 	seq := make([]byte, binary.MaxVarintLen64)
 	n := binary.PutUvarint(seq[:], seqNo)
 
+	// 按实际长度创建字节数组合并
 	encKey := make([]byte, n+len(key))
 	copy(encKey[:n], seq[:n])
 	copy(encKey[n:], key)

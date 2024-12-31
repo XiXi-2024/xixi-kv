@@ -8,15 +8,16 @@ import (
 	"sync"
 )
 
-// BTree 索引实现 对 google 的 btree 库的封装
+// BTree 索引实现
 // https://github.com/google/btree
 type BTree struct {
 	tree *btree.BTree
-	// 底层实现非线程安全 对写操作需要加锁
+	// 底层实现非线程安全需要自行保证
 	lock *sync.RWMutex
 }
 
 func NewBTree() *BTree {
+	// 返回默认实例
 	return &BTree{
 		tree: btree.New(33),
 		lock: new(sync.RWMutex),
@@ -75,25 +76,26 @@ func (bt *BTree) Iterator(reverse bool) Iterator {
 type btreeIterator struct {
 	curIndex int     // 当前遍历的下标位置
 	reverse  bool    // 是否降序遍历
-	values   []*Item // 类型复用 存放 key + 位置索引信息
+	values   []*Item // 类型复用, 存放 key + 位置索引信息
 }
 
 func newBTreeIterator(tree *btree.BTree, reverse bool) *btreeIterator {
-	// 内置迭代方法无法满足个性化的迭代需求 取出元素存入数组中再进行迭代
+	// todo 后期解决
+	// 内置迭代方法无法满足个性化的迭代需求, 取出元素存入数组中再进行迭代
 	// 可能导致占用内存急剧膨胀
 	var idx int
 	values := make([]*Item, tree.Len())
 
 	// 定义迭代器函数
 	saveValues := func(it btree.Item) bool {
-		// 处理元素 按顺序追加到数组中
+		// 处理元素, 按顺序追加到数组中
 		values[idx] = it.(*Item)
 		idx++
 		// 返回 false 终止遍历
 		return true
 	}
 
-	// 遍历树中元素 传入函数对遍历的每个元素进行处理
+	// 遍历树中元素, 传入函数对遍历的每个元素进行处理
 	if reverse {
 		// 升序遍历
 		tree.Descend(saveValues)

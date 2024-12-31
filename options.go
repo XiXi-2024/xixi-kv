@@ -23,7 +23,7 @@ type IteratorOptions struct {
 
 // WriteBatchOptions 批量写入配置项
 type WriteBatchOptions struct {
-	// 单个批次最大数据量
+	// 单个批次最大日志记录数量
 	MaxBatchNum uint
 
 	// 提交事务时是否立即持久化

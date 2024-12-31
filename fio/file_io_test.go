@@ -7,17 +7,13 @@ import (
 	"testing"
 )
 
-// 清除临时文件 避免影响后续测试结果
-func destroyFile(path string) {
-	if err := os.RemoveAll(path); err != nil {
-		panic(err)
-	}
-}
-
-func TestFileIO_Close(t *testing.T) {
-	path := filepath.Join("E:\\桌面\\Go", "a.data")
+// 创建
+func TestNewFileIOManager(t *testing.T) {
+	path := filepath.Join(os.TempDir(), "a.data")
+	//t.Log(path)
 	fio, err := NewFileIOManager(path)
 	defer destroyFile(path)
+
 	assert.Nil(t, err)
 	assert.NotNil(t, fio)
 
@@ -25,8 +21,10 @@ func TestFileIO_Close(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+// 读取
 func TestFileIO_Read(t *testing.T) {
-	path := filepath.Join("E:\\桌面\\Go", "a.data")
+	path := filepath.Join(os.TempDir(), "a.data")
+	//t.Log(path)
 	fio, err := NewFileIOManager(path)
 	defer destroyFile(path)
 	assert.Nil(t, err)
@@ -52,22 +50,10 @@ func TestFileIO_Read(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestFileIO_Sync(t *testing.T) {
-	path := filepath.Join("E:\\桌面\\Go", "a.data")
-	fio, err := NewFileIOManager(path)
-	defer destroyFile(path)
-	assert.Nil(t, err)
-	assert.NotNil(t, fio)
-
-	err = fio.Sync()
-	assert.Nil(t, err)
-
-	err = fio.Close()
-	assert.Nil(t, err)
-}
-
+// 写入
 func TestFileIO_Write(t *testing.T) {
-	path := filepath.Join("E:\\桌面\\Go", "a.data")
+	path := filepath.Join(os.TempDir(), "a.data")
+	//t.Log(path)
 	fio, err := NewFileIOManager(path)
 	defer destroyFile(path)
 	assert.Nil(t, err)
@@ -89,14 +75,38 @@ func TestFileIO_Write(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestNewFileIOManager(t *testing.T) {
-	path := filepath.Join("E:\\桌面\\Go", "a.data")
+// 关闭
+func TestFileIO_Close(t *testing.T) {
+	path := filepath.Join(os.TempDir(), "a.data")
+	//t.Log(path)
 	fio, err := NewFileIOManager(path)
 	defer destroyFile(path)
-
 	assert.Nil(t, err)
 	assert.NotNil(t, fio)
 
 	err = fio.Close()
 	assert.Nil(t, err)
+}
+
+// 持久化
+func TestFileIO_Sync(t *testing.T) {
+	path := filepath.Join(os.TempDir(), "a.data")
+	//t.Log(path)
+	fio, err := NewFileIOManager(path)
+	defer destroyFile(path)
+	assert.Nil(t, err)
+	assert.NotNil(t, fio)
+
+	err = fio.Sync()
+	assert.Nil(t, err)
+
+	err = fio.Close()
+	assert.Nil(t, err)
+}
+
+// 清除生成的临时文件, 避免影响后续测试结果
+func destroyFile(path string) {
+	if err := os.RemoveAll(path); err != nil {
+		panic(err)
+	}
 }
