@@ -228,3 +228,94 @@ func (dts *DataTypeService) findMetadata(key []byte, dt dataType) (*metadata, er
 
 	return meta, nil
 }
+
+// ========================= Set 数据类型 ========================
+
+// SAdd 新增 member 到集合
+func (dts *DataTypeService) SAdd(key, member []byte) (bool, error) {
+	meta, err := dts.findMetadata(key, Set)
+	if err != nil {
+		return false, err
+	}
+	// 构造数据部分 key 实例
+	sk := &setInternalKey{
+		key:     key,
+		version: meta.version,
+		member:  member,
+	}
+	var ok bool
+	// 当 member 不存在时新增
+	if _, err = dts.db.Get(sk.encode()); err == bitcask.ErrKeyNotFound {
+		// 涉及更新数据和元数据两步操作, 需保证原子性
+		wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+		meta.size++
+		_ = wb.Put(key, meta.encode())
+		// value 为 nil
+		_ = wb.Put(sk.encode(), nil)
+		if err = wb.Commit(); err != nil {
+			return false, err
+		}
+		ok = true
+	}
+
+	return ok, nil
+}
+
+// SIsMember 判断 member 是否在集合中存在
+func (dts *DataTypeService) SIsMember(key, member []byte) (bool, error) {
+	meta, err := dts.findMetadata(key, Set)
+	if err != nil {
+		return false, err
+	}
+	if meta.size == 0 {
+		return false, nil
+	}
+
+	// 构造数据部分 key 实例
+	sk := &setInternalKey{
+		key:     key,
+		version: meta.version,
+		member:  member,
+	}
+
+	_, err = dts.db.Get(sk.encode())
+	if err != nil && err != bitcask.ErrKeyNotFound {
+		return false, err
+	}
+	if err == bitcask.ErrKeyNotFound {
+		return false, nil
+	}
+	return true, nil
+}
+
+// SRem 从集合中删除 member
+func (dts *DataTypeService) SRem(key, member []byte) (bool, error) {
+	meta, err := dts.findMetadata(key, Set)
+	if err != nil {
+		return false, err
+	}
+	if meta.size == 0 {
+		return false, nil
+	}
+
+	// 构造数据部分 key 实例
+	sk := &setInternalKey{
+		key:     key,
+		version: meta.version,
+		member:  member,
+	}
+
+	if _, err = dts.db.Get(sk.encode()); err == bitcask.ErrKeyNotFound {
+		return false, nil
+	}
+
+	// 涉及更新数据和元数据两步操作, 需保证原子性
+	wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+	meta.size--
+	_ = wb.Put(key, meta.encode())
+	_ = wb.Delete(sk.encode())
+	if err = wb.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}

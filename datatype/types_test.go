@@ -61,7 +61,7 @@ func TestDataTypeService_Del_Type(t *testing.T) {
 	assert.Equal(t, bitcask.ErrKeyNotFound, err)
 }
 
-func TestRedisDataStructure_HGet(t *testing.T) {
+func TestDataTypeService_HGet(t *testing.T) {
 	opts := bitcask.DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-redis-hget")
 	opts.DirPath = dir
@@ -94,7 +94,7 @@ func TestRedisDataStructure_HGet(t *testing.T) {
 	assert.Equal(t, bitcask.ErrKeyNotFound, err)
 }
 
-func TestRedisDataStructure_HDel(t *testing.T) {
+func TestDataTypeService_HDel(t *testing.T) {
 	opts := bitcask.DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-redis-hdel")
 	opts.DirPath = dir
@@ -122,4 +122,63 @@ func TestRedisDataStructure_HDel(t *testing.T) {
 	del2, err := dts.HDel(utils.GetTestKey(1), []byte("field1"))
 	assert.Nil(t, err)
 	assert.True(t, del2)
+}
+func TestDataTypeService_SIsMember(t *testing.T) {
+	opts := bitcask.DefaultOptions
+	dir, _ := os.MkdirTemp("", "bitcask-go-redis-sismember")
+	opts.DirPath = dir
+	dts, err := NewDataTypeService(opts)
+	assert.Nil(t, err)
+
+	ok, err := dts.SAdd(utils.GetTestKey(1), []byte("val-1"))
+	assert.Nil(t, err)
+	assert.True(t, ok)
+	ok, err = dts.SAdd(utils.GetTestKey(1), []byte("val-1"))
+	assert.Nil(t, err)
+	assert.False(t, ok)
+	ok, err = dts.SAdd(utils.GetTestKey(1), []byte("val-2"))
+	assert.Nil(t, err)
+	assert.True(t, ok)
+
+	ok, err = dts.SIsMember(utils.GetTestKey(2), []byte("val-1"))
+	assert.Nil(t, err)
+	assert.False(t, ok)
+	ok, err = dts.SIsMember(utils.GetTestKey(1), []byte("val-1"))
+	assert.Nil(t, err)
+	assert.True(t, ok)
+	ok, err = dts.SIsMember(utils.GetTestKey(1), []byte("val-2"))
+	assert.Nil(t, err)
+	assert.True(t, ok)
+	ok, err = dts.SIsMember(utils.GetTestKey(1), []byte("val-not-exist"))
+	assert.Nil(t, err)
+	assert.False(t, ok)
+}
+
+func TestDataTypeService_SRem(t *testing.T) {
+	opts := bitcask.DefaultOptions
+	dir, _ := os.MkdirTemp("", "bitcask-go-redis-srem")
+	opts.DirPath = dir
+	dts, err := NewDataTypeService(opts)
+	assert.Nil(t, err)
+
+	ok, err := dts.SAdd(utils.GetTestKey(1), []byte("val-1"))
+	assert.Nil(t, err)
+	assert.True(t, ok)
+	ok, err = dts.SAdd(utils.GetTestKey(1), []byte("val-1"))
+	assert.Nil(t, err)
+	assert.False(t, ok)
+	ok, err = dts.SAdd(utils.GetTestKey(1), []byte("val-2"))
+	assert.Nil(t, err)
+	assert.True(t, ok)
+
+	ok, err = dts.SRem(utils.GetTestKey(2), []byte("val-1"))
+	assert.Nil(t, err)
+	assert.False(t, ok)
+	ok, err = dts.SRem(utils.GetTestKey(1), []byte("val-2"))
+	assert.Nil(t, err)
+	assert.True(t, ok)
+
+	ok, err = dts.SIsMember(utils.GetTestKey(1), []byte("val-2"))
+	assert.Nil(t, err)
+	assert.False(t, ok)
 }
