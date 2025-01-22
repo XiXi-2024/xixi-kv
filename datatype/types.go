@@ -220,10 +220,10 @@ func (dts *DataTypeService) findMetadata(key []byte, dt dataType) (*metadata, er
 			version:  time.Now().UnixNano(),
 			size:     0,
 		}
-	}
-	if dt == List {
-		meta.head = initialListMark
-		meta.tail = initialListMark
+		if dt == List {
+			meta.head = initialListMark
+			meta.tail = initialListMark
+		}
 	}
 
 	return meta, nil
@@ -318,4 +318,107 @@ func (dts *DataTypeService) SRem(key, member []byte) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// ======================= List 数据结构 =======================
+
+// LPush 左侧入队
+func (dts *DataTypeService) LPush(key, element []byte) (uint32, error) {
+	return dts.pushInner(key, element, true)
+}
+
+// RPush 右侧入队
+func (dts *DataTypeService) RPush(key, element []byte) (uint32, error) {
+	return dts.pushInner(key, element, false)
+}
+
+// LPop 左侧出队
+func (dts *DataTypeService) LPop(key []byte) ([]byte, error) {
+	return dts.popInner(key, true)
+}
+
+// RPop 右侧出队
+func (dts *DataTypeService) RPop(key []byte) ([]byte, error) {
+	return dts.popInner(key, false)
+}
+
+// 入队操作
+func (dts *DataTypeService) pushInner(key, element []byte, isLeft bool) (uint32, error) {
+	// 查询元数据信息
+	meta, err := dts.findMetadata(key, List)
+	if err != nil {
+		return 0, err
+	}
+
+	// 构造数据部分 key 实例
+	lk := &listInternalKey{
+		key:     key,
+		version: meta.version,
+	}
+	// 确定入队元素的下标
+	if isLeft {
+		lk.index = meta.head - 1
+	} else {
+		lk.index = meta.tail
+	}
+
+	// 涉及更新数据和元数据两步操作, 需保证原子性
+	wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+	meta.size++
+	if isLeft {
+		meta.head--
+	} else {
+		meta.tail++
+	}
+	_ = wb.Put(key, meta.encode())
+	_ = wb.Put(lk.encode(), element)
+	if err = wb.Commit(); err != nil {
+		return 0, err
+	}
+
+	return meta.size, nil
+}
+
+// 出队操作
+func (dts *DataTypeService) popInner(key []byte, isLeft bool) ([]byte, error) {
+	// 查询元数据信息
+	meta, err := dts.findMetadata(key, List)
+	if err != nil {
+		return nil, err
+	}
+	if meta.size == 0 {
+		return nil, nil
+	}
+
+	// 构造数据部分 key 实例
+	lk := &listInternalKey{
+		key:     key,
+		version: meta.version,
+	}
+	// 确定出队元素的下标
+	if isLeft {
+		lk.index = meta.head
+	} else {
+		lk.index = meta.tail - 1
+	}
+
+	// 获取出队元素进行返回
+	element, err := dts.db.Get(lk.encode())
+	if err != nil {
+		return nil, err
+	}
+
+	// 仅更新元数据即可
+	// todo 未释放删除元素占用内存
+	meta.size--
+	if isLeft {
+		meta.head++
+	} else {
+		meta.tail--
+	}
+	if err = dts.db.Put(key, meta.encode()); err != nil {
+		return nil, err
+	}
+
+	return element, nil
 }
