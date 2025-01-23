@@ -2,6 +2,7 @@ package datatype
 
 import (
 	"encoding/binary"
+	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
 	"math"
 )
 
@@ -152,6 +153,61 @@ func (lk *listInternalKey) encode() []byte {
 
 	// index
 	binary.LittleEndian.PutUint64(buf[index:], lk.index)
+
+	return buf
+}
+
+type zsetInternalKey struct {
+	key     []byte
+	version int64
+	member  []byte
+	score   float64
+}
+
+// 编码, 获取指向 score 的 key
+func (zk *zsetInternalKey) encodeWithMember() []byte {
+	buf := make([]byte, len(zk.key)+len(zk.member)+8)
+
+	// key
+	var index = 0
+	copy(buf[index:index+len(zk.key)], zk.key)
+	index += len(zk.key)
+
+	// version
+	binary.LittleEndian.PutUint64(buf[index:index+8], uint64(zk.version))
+	index += 8
+
+	// member
+	copy(buf[index:], zk.member)
+
+	return buf
+}
+
+// 编码, 获取指向 nil 的 key
+// 用于按 score 的顺序获取 member
+func (zk *zsetInternalKey) encodeWithScore() []byte {
+	scoreBuf := utils.Float64ToBytes(zk.score)
+	buf := make([]byte, len(zk.key)+len(zk.member)+len(scoreBuf)+8+4)
+
+	// key
+	var index = 0
+	copy(buf[index:index+len(zk.key)], zk.key)
+	index += len(zk.key)
+
+	// version
+	binary.LittleEndian.PutUint64(buf[index:index+8], uint64(zk.version))
+	index += 8
+
+	// score
+	copy(buf[index:index+len(scoreBuf)], scoreBuf)
+	index += len(scoreBuf)
+
+	// member
+	copy(buf[index:index+len(zk.member)], zk.member)
+	index += len(zk.member)
+
+	// member size
+	binary.LittleEndian.PutUint32(buf[index:], uint32(len(zk.member)))
 
 	return buf
 }
