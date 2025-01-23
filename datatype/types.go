@@ -38,6 +38,10 @@ func NewDataTypeService(options bitcask.Options) (*DataTypeService, error) {
 	return &DataTypeService{db: db}, nil
 }
 
+func (dts *DataTypeService) Close() error {
+	return dts.db.Close()
+}
+
 // ========================= String 数据类型 ========================
 // todo 后续接口参数重构为 string 类型
 // todo 后续拆分到各个文件
