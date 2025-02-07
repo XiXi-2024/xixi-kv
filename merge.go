@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 )
 
@@ -20,23 +19,24 @@ const (
 
 // Merge 立即执行 Merge 过程
 // todo 扩展点：新增定时任务和清除策略配置项, 监控数据状态, 进行自动清理
-// todo 优化点：去除锁
+// todo 优化点：使用性能更高的 merge 方法
 func (db *DB) Merge() error {
-	// 不存在活跃文件时数据库为空, 直接返回
+	// 校验数据是否为空
 	if db.activeFile == nil {
 		return nil
 	}
 
+	// 方法仅部分逻辑需加锁, 不应 defer
 	db.mu.Lock()
 
-	// 正在进行 merge, 返回错误
+	// 校验是否正在进行 merge
+	// 由于 merge 过程中会提前释放锁, 故存在同时尝试进行 merge 的情况
 	if db.isMerging {
-		// todo bug: 是否重复解锁
 		db.mu.Unlock()
 		return ErrMergeIsProgress
 	}
 
-	// 判断无效数据占比是否达到阈值, 未达到则不执行 merge
+	// 校验无效数据占比是否达到阈值
 	totalSize, err := utils.DirSize(db.options.DirPath)
 	if err != nil {
 		db.mu.Unlock()
@@ -47,8 +47,7 @@ func (db *DB) Merge() error {
 		return ErrMergeRatioUnreached
 	}
 
-	// 判断数据目录所在磁盘剩余空间是否能容纳 merge 后的数据量
-	// todo 优化点：后续判断是否超出配置的最大数据量
+	// 校验数据目录所在磁盘剩余空间是否能容纳 merge 后的数据量
 	availableDiskSize, err := utils.AvailableDiskSize(db.options.DirPath)
 	if err != nil {
 		db.mu.Unlock()
@@ -62,20 +61,13 @@ func (db *DB) Merge() error {
 	// 更新 merge 状态
 	db.isMerging = true
 	defer func() {
-		// todo 优化点：并发问题？
 		db.isMerging = false
 	}()
 
-	// 将当前活跃文件持久化, 转换为旧数据文件
-	// 后续同样加入参与 merge 的集合
-	if err := db.activeFile.Sync(); err != nil {
+	// 当前活跃文件同样加入参与 merge 的集合
+	if err := db.sync(); err != nil {
 		db.mu.Unlock()
 		return err
-	}
-	db.olderFiles[db.activeFile.FileId] = db.activeFile
-	if err := db.setActiveDataFile(); err != nil {
-		db.mu.Unlock()
-		return nil
 	}
 
 	// 记录未参与 merge 的最近文件 id
@@ -87,12 +79,9 @@ func (db *DB) Merge() error {
 	for _, file := range db.olderFiles {
 		mergeFiles = append(mergeFiles, file)
 	}
-	db.mu.Unlock()
 
-	// todo bug：无效操作, 可取消
-	sort.Slice(mergeFiles, func(i, j int) bool {
-		return mergeFiles[i].FileId < mergeFiles[j].FileId
-	})
+	// 由于采用操作临时目录方式, 故允许提前释放锁
+	db.mu.Unlock()
 
 	// 获取 merge 临时目录路径
 	mergePath := db.getMergePath()
@@ -108,7 +97,7 @@ func (db *DB) Merge() error {
 		return err
 	}
 
-	// 创建新的临时 DB 实例操作临时目录, 避免并发冲突
+	// 创建新临时 DB 实例操作临时目录, 从而避免并发冲突
 	mergeOptions := db.options
 	mergeOptions.DirPath = mergePath
 	mergeOptions.SyncWrites = false // 加快 merge 速度
@@ -141,15 +130,14 @@ func (db *DB) Merge() error {
 			// 与内存中的最新数据比较, 判断是否为有效数据
 			if logRecordPos != nil &&
 				logRecordPos.Fid == dataFile.FileId && logRecordPos.Offset == offset {
-				// 对于有效数据, 直接清除事务标记
-				// todo 不应该在这里清除
+				// 对于有效数据, 无论是否携带事务标记都表示事务已成功, 直接清除
 				logRecord.Key = logRecordKeyWithSeq(realKey, nonTransactionSeqNo)
-				// 将当前有效数据重写到 merge 临时目录的活跃文件中
+				// 将数据重写到 merge 临时目录中
 				pos, err := mergeDB.appendLogRecord(logRecord)
 				if err != nil {
 					return err
 				}
-				// 顺便的将构建索引所需信息写入 Hint 文件中, 用于后续重启时加速构建索引
+				// merge的过程中顺便将构建索引所需信息写入 Hint 文件中, 用于后续重启时加速构建索引
 				if err := hintFile.WriteHintRecord(realKey, pos); err != nil {
 					return err
 				}
@@ -173,7 +161,7 @@ func (db *DB) Merge() error {
 	}
 	// 向文件写入未参与该次 merge 的最近数据文件id
 	mergeFinRecord := &data.LogRecord{
-		Key:   []byte(mergeFinishedKey), // key 为固定常量
+		Key:   []byte(mergeFinishedKey),
 		Value: []byte(strconv.Itoa(int(nonMergeFileId))),
 	}
 	encRecord, _ := data.EncodeLogRecord(mergeFinRecord)
@@ -196,10 +184,10 @@ func (db *DB) getMergePath() string {
 	return filepath.Join(dir, base+mergeDirName)
 }
 
-// 加载 merge 临时目录中的数据文件
+// 尝试加载 merge 临时目录
 func (db *DB) loadMergeFiles() error {
 	mergePath := db.getMergePath()
-	// 未进行过 merge, 直接返回
+	// 未进行过 merge
 	if _, err := os.Stat(mergePath); os.IsNotExist(err) {
 		return nil
 	}
@@ -234,7 +222,7 @@ func (db *DB) loadMergeFiles() error {
 		mergeFileNames = append(mergeFileNames, entry.Name())
 	}
 
-	// merge 未完成直接返回
+	// merge 未完成
 	if !mergeFinished {
 		return nil
 	}
@@ -258,7 +246,7 @@ func (db *DB) loadMergeFiles() error {
 		}
 	}
 
-	// 将新的数据文件移动到数据目录中
+	// 将重写的数据文件和 hint 文件移动到数据目录中
 	for _, fileName := range mergeFileNames {
 		srcPath := filepath.Join(mergePath, fileName)
 		destPath := filepath.Join(db.options.DirPath, fileName)
@@ -290,7 +278,7 @@ func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
 
 // 尝试通过 hint 文件加载索引
 func (db *DB) loadIndexFromHintFile() error {
-	// 判断 hint 文件是否存在
+	// 校验 hint 文件是否存在
 	hintFileName := filepath.Join(db.options.DirPath, data.HintFileName)
 	if _, err := os.Stat(hintFileName); os.IsNotExist(err) {
 		return nil

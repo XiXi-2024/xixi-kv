@@ -380,16 +380,7 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 
 	// 活跃文件剩余空间不足, 新建数据文件作为新的活跃文件
 	if db.activeFile.WriteOff+size > db.options.DataFileSize {
-		// 持久化原活跃文件
-		if err := db.activeFile.Sync(); err != nil {
-			return nil, err
-		}
-
-		// 将原活跃文件转换为旧数据文件
-		db.olderFiles[db.activeFile.FileId] = db.activeFile
-
-		// 设置新的活跃文件
-		if err := db.setActiveDataFile(); err != nil {
+		if err := db.sync(); err != nil {
 			return nil, err
 		}
 	}
@@ -424,6 +415,24 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 	// 构造内存索引信息返回
 	pos := &data.LogRecordPos{Fid: db.activeFile.FileId, Offset: writeOff, Size: uint32(size)}
 	return pos, nil
+}
+
+// 持久化并设置新活跃文件
+func (db *DB) sync() error {
+	// 持久化原活跃文件
+	if err := db.activeFile.Sync(); err != nil {
+		return err
+	}
+
+	// 将原活跃文件转换为旧数据文件
+	db.olderFiles[db.activeFile.FileId] = db.activeFile
+
+	// 设置新的活跃文件
+	if err := db.setActiveDataFile(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // 创建并设置新活跃文件

@@ -10,10 +10,8 @@ import (
 
 // 没有任何数据的情况下进行 merge
 func TestDB_Merge(t *testing.T) {
-	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-merge-1")
-	opts.DirPath = dir
-	db, err := Open(opts)
+	db, err := newTestDB_Merge(dir)
 	defer destroyDB(db)
 	assert.Nil(t, err)
 	assert.NotNil(t, db)
@@ -24,12 +22,8 @@ func TestDB_Merge(t *testing.T) {
 
 // 全部都是有效的数据
 func TestDB_Merge2(t *testing.T) {
-	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-merge-2")
-	opts.DataFileSize = 32 * 1024 * 1024
-	opts.DataFileMergeRatio = 0
-	opts.DirPath = dir
-	db, err := Open(opts)
+	db, err := newTestDB_Merge(dir)
 	defer destroyDB(db)
 	assert.Nil(t, err)
 	assert.NotNil(t, db)
@@ -46,7 +40,7 @@ func TestDB_Merge2(t *testing.T) {
 	err = db.Close()
 	assert.Nil(t, err)
 
-	db2, err := Open(opts)
+	db2, err := newTestDB_Merge(dir)
 	defer func() {
 		_ = db2.Close()
 	}()
@@ -61,14 +55,10 @@ func TestDB_Merge2(t *testing.T) {
 	}
 }
 
-// 有失效的数据，和被重复 Put 的数据
+// 存在失效的、重复 Put 的数据
 func TestDB_Merge3(t *testing.T) {
-	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-merge-3")
-	opts.DataFileSize = 32 * 1024 * 1024
-	opts.DataFileMergeRatio = 0
-	opts.DirPath = dir
-	db, err := Open(opts)
+	db, err := newTestDB_Merge(dir)
 	defer destroyDB(db)
 	assert.Nil(t, err)
 	assert.NotNil(t, db)
@@ -89,11 +79,10 @@ func TestDB_Merge3(t *testing.T) {
 	err = db.Merge()
 	assert.Nil(t, err)
 
-	// 重启校验
 	err = db.Close()
 	assert.Nil(t, err)
 
-	db2, err := Open(opts)
+	db2, err := newTestDB_Merge(dir)
 	defer func() {
 		_ = db2.Close()
 	}()
@@ -112,14 +101,10 @@ func TestDB_Merge3(t *testing.T) {
 	}
 }
 
-// 全部是无效的数据
+// 全部为无效数据
 func TestDB_Merge4(t *testing.T) {
-	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-merge-4")
-	opts.DataFileSize = 32 * 1024 * 1024
-	opts.DataFileMergeRatio = 0
-	opts.DirPath = dir
-	db, err := Open(opts)
+	db, err := newTestDB_Merge(dir)
 	defer destroyDB(db)
 	assert.Nil(t, err)
 	assert.NotNil(t, db)
@@ -140,7 +125,7 @@ func TestDB_Merge4(t *testing.T) {
 	err = db.Close()
 	assert.Nil(t, err)
 
-	db2, err := Open(opts)
+	db2, err := newTestDB_Merge(dir)
 	defer func() {
 		_ = db2.Close()
 	}()
@@ -151,12 +136,8 @@ func TestDB_Merge4(t *testing.T) {
 
 // Merge 的过程中有新的数据写入或删除
 func TestDB_Merge5(t *testing.T) {
-	opts := DefaultOptions
-	dir, _ := os.MkdirTemp("", "bitcask-go-merge-5")
-	opts.DataFileSize = 32 * 1024 * 1024
-	opts.DataFileMergeRatio = 0
-	opts.DirPath = dir
-	db, err := Open(opts)
+	dir, _ := os.MkdirTemp("", "bitcask-go-merge-2")
+	db, err := newTestDB_Merge(dir)
 	defer destroyDB(db)
 	assert.Nil(t, err)
 	assert.NotNil(t, db)
@@ -187,11 +168,9 @@ func TestDB_Merge5(t *testing.T) {
 	err = db.Close()
 	assert.Nil(t, err)
 
-	db2, err := Open(opts)
-	defer func() {
-		_ = db2.Close()
-	}()
+	db2, err := newTestDB_Merge(dir)
 	assert.Nil(t, err)
+	assert.NotNil(t, db2)
 	keys := db2.ListKeys()
 	assert.Equal(t, 10000, len(keys))
 
@@ -200,4 +179,13 @@ func TestDB_Merge5(t *testing.T) {
 		assert.Nil(t, err)
 		assert.NotNil(t, val)
 	}
+	_ = db2.Close()
+}
+
+func newTestDB_Merge(path string) (*DB, error) {
+	opts := DefaultOptions
+	opts.DataFileSize = 32 * 1024 * 1024
+	opts.DataFileMergeRatio = 0
+	opts.DirPath = path
+	return Open(opts)
 }
