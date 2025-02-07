@@ -50,7 +50,7 @@ func (db *DB) Merge() error {
 
 	// 判断数据目录所在磁盘剩余空间是否能容纳 merge 后的数据量
 	// todo 优化点：后续判断是否超出配置的最大数据量
-	availableDiskSize, err := utils.AvailableDiskSizeWin(db.options.DirPath)
+	availableDiskSize, err := utils.AvailableDiskSize(db.options.DirPath)
 	if err != nil {
 		db.mu.Unlock()
 		return err
