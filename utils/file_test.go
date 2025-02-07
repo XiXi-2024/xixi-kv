@@ -16,10 +16,10 @@ func TestDirSize(t *testing.T) {
 	assert.True(t, dirSize > 0)
 }
 
-func TestAvailableDiskSizeWin(t *testing.T) {
+func TestAvailableDiskSize(t *testing.T) {
 	dir, _ := os.MkdirTemp("", "data")
-	size, err := AvailableDiskSizeWin(dir)
-	t.Log(size / 1024 / 1024 / 1024)
+	size, err := AvailableDiskSize(dir)
+	t.Log(size/1024/1024/1024, "G")
 	assert.Nil(t, err)
 	assert.True(t, size > 0)
 }

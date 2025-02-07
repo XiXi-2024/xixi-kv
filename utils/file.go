@@ -4,9 +4,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"syscall"
-	"unsafe"
 )
 
 // DirSize 获取指定目录的空间大小
@@ -24,50 +23,13 @@ func DirSize(dirPath string) (int64, error) {
 	return size, err
 }
 
-// todo 优化点：封装为统一接口：获取磁盘剩余空间 参考runtime.GOOS == "windows"
-// todo 优化点：新增数据库最大占用空间配置项
-// AvailableDiskSizeUnix AvailableDiskSize 获取磁盘剩余空间大小 Linux/Mac系统
-func AvailableDiskSizeUnix() (uint64, error) {
-	//wd, err := syscall.Getwd()
-	//if err != nil {
-	//	return 0, err
-	//}
-	//var stat syscall.Statfs_t
-	//if err = syscall.Statfs(wd, &stat); err != nil {
-	//	return 0, err
-	//}
-	//return stat.Bavail * uint64(stat.Bsize), nil
-	return 0, nil
-}
-
-// AvailableDiskSizeWin AvailableDiskSize 获取指定目录所在磁盘的剩余空间大小 Win系统
-func AvailableDiskSizeWin(dirPath string) (uint64, error) {
-	// 加载 kernel32.dll
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	// 获取 GetDiskFreeSpaceExW 函数
-	procGetDiskFreeSpaceExW := kernel32.NewProc("GetDiskFreeSpaceExW")
-
-	// 将路径转换为 UTF-16
-	pathPtr, err := syscall.UTF16PtrFromString(dirPath)
-	if err != nil {
-		return 0, err
+// AvailableDiskSize 获取磁盘剩余空间大小
+// 当为linux/mac系统时允许 dirPath 为 ""
+func AvailableDiskSize(dirPath string) (uint64, error) {
+	if runtime.GOOS == "windows" {
+		return availableDiskSizeWin(dirPath)
 	}
-
-	var freeBytesAvailable, _, _ int64
-
-	// 调用 GetDiskFreeSpaceExW
-	ret, _, err := procGetDiskFreeSpaceExW.Call(
-		uintptr(unsafe.Pointer(pathPtr)),
-		uintptr(unsafe.Pointer(&freeBytesAvailable)),
-		0,
-		0,
-	)
-
-	if ret == 0 {
-		return 0, err
-	}
-
-	return uint64(freeBytesAvailable), nil
+	return availableDiskSizeUnix()
 }
 
 // CopyDir 拷贝 src 目录到 dest 目录, 排除指定列表中的文件
