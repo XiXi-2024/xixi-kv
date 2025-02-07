@@ -28,7 +28,6 @@ func (db *DB) Merge() error {
 	}
 
 	db.mu.Lock()
-	defer db.mu.Unlock()
 
 	// 正在进行 merge, 返回错误
 	if db.isMerging {
