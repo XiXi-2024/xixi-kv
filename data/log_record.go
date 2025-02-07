@@ -94,7 +94,7 @@ func EncodeLogRecordPos(pos *LogRecordPos) []byte {
 	return buf[:index]
 }
 
-// DecodeLogRecordPos 解码 LogRecordPos 实例
+// DecodeLogRecordPos 解码为 LogRecordPos 实例
 func DecodeLogRecordPos(buf []byte) *LogRecordPos {
 	var index = 0
 	fileId, n := binary.Varint(buf[index:])
@@ -105,10 +105,10 @@ func DecodeLogRecordPos(buf []byte) *LogRecordPos {
 	return &LogRecordPos{Fid: uint32(fileId), Offset: offset, Size: uint32(size)}
 }
 
-// decodeLogRecordHeader 解码包含 Header 头部的字节数组
-// 返回 logRecordHeader 实例和 Header 真实字节数
+// decodeLogRecordHeader 解码为header头部
 func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
 	// 长度校验
+	// todo 优化点：校验完善
 	if len(buf) <= 4 {
 		return nil, 0
 	}

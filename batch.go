@@ -21,7 +21,7 @@ type WriteBatch struct {
 	pendingWrites map[string]*data.LogRecord // 暂存数据
 }
 
-// NewWriteBatch WriteBatch 实例初始化
+// NewWriteBatch 创建新 WriteBatch 实例
 func (db *DB) NewWriteBatch(opts WriteBatchOptions) *WriteBatch {
 	// 如果选择 B+ 树索引实现、事务序列号未加载、非首次加载数据目录, 则禁用事务提交功能
 	// 首次加载时事务序列号为 0, 但无法加载得到, 故进行特殊判断
@@ -61,16 +61,15 @@ func (wb *WriteBatch) Delete(key []byte) error {
 
 	logRecordPos := wb.db.index.Get(key)
 
-	// 待删除元素未提交持久化
+	// 待删除元素未提交, 删除缓存即可
 	if logRecordPos == nil {
-		// 直接删除缓存
 		if wb.pendingWrites[string(key)] != nil {
 			delete(wb.pendingWrites, string(key))
 		}
 		return nil
 	}
 
-	// 待删除元素已持久化, 添加墓碑值缓存
+	// 待删除元素已持久化, 追加墓碑值
 	logRecord := &data.LogRecord{Key: key, Type: data.LogRecordDeleted}
 	wb.pendingWrites[string(key)] = logRecord
 	return nil
@@ -88,6 +87,7 @@ func (wb *WriteBatch) Commit() error {
 	}
 
 	// 已缓存个数超过配置的最大数量
+	// todo bug：是否应按最大数量提交
 	if uint(len(wb.pendingWrites)) > wb.options.MaxBatchNum {
 		return ErrExceedMaxBatchNum
 	}
@@ -143,7 +143,7 @@ func (wb *WriteBatch) Commit() error {
 			oldPos = wb.db.index.Put(record.Key, pos)
 		}
 		// 追加形式, 遇到删除状态的日志记录同样更新索引
-		// todo 未统计 pos 本身的字节数
+		// todo bug：未统计 pos 本身的字节数
 		if record.Type == data.LogRecordDeleted {
 			oldPos, _ = wb.db.index.Delete(record.Key)
 		}
@@ -158,13 +158,13 @@ func (wb *WriteBatch) Commit() error {
 	return nil
 }
 
-// 将 key 和 seqNo 合并编码
+// 将 key 和事务ID seqNo 合并编码
 func logRecordKeyWithSeq(key []byte, seqNo uint64) []byte {
-	// 获取事务 id 实际占用字节数
+	// 获取 seqNo 实际占用字节数
 	seq := make([]byte, binary.MaxVarintLen64)
 	n := binary.PutUvarint(seq[:], seqNo)
 
-	// 按实际长度创建字节数组合并
+	// 按实际长度创建字节数组顺序存储
 	encKey := make([]byte, n+len(key))
 	copy(encKey[:n], seq[:n])
 	copy(encKey[n:], key)

@@ -24,6 +24,8 @@ func DirSize(dirPath string) (int64, error) {
 	return size, err
 }
 
+// todo 优化点：封装为统一接口：获取磁盘剩余空间 参考runtime.GOOS == "windows"
+// todo 优化点：新增数据库最大占用空间配置项
 // AvailableDiskSizeUnix AvailableDiskSize 获取磁盘剩余空间大小 Linux/Mac系统
 func AvailableDiskSizeUnix() (uint64, error) {
 	//wd, err := syscall.Getwd()

@@ -11,12 +11,13 @@ var (
 	letters = []byte("Wx234234234sdlfjlasWWDSFDFsdgfn2342352342345dfgasW")
 )
 
-// GetTestKey 根据 n 生成key 供测试使用
+// GetTestKey 根据 n 生成 key 供测试使用
 func GetTestKey(n int) []byte {
 	return []byte(fmt.Sprintf("bitcask-go-key-%09d", n))
 }
 
-// RandomValue 生成长度为 n 的随机value 供测试使用
+// RandomValue 生成长度为 n 的随机 value 供测试使用
+// todo 优化生成数据的随机性
 func RandomValue(n int) []byte {
 	b := make([]byte, n)
 	for i := range b {

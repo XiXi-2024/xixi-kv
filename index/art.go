@@ -15,6 +15,7 @@ type AdaptiveRadixTree struct {
 	lock *sync.RWMutex
 }
 
+// NewART 创建新索引实例
 func NewART() *AdaptiveRadixTree {
 	return &AdaptiveRadixTree{
 		tree: goart.New(),
@@ -60,6 +61,7 @@ func (art *AdaptiveRadixTree) Size() int {
 }
 
 func (art *AdaptiveRadixTree) Close() error {
+	// todo 优化点, 释放内存
 	return nil
 }
 
@@ -71,19 +73,20 @@ func (art *AdaptiveRadixTree) Iterator(reverse bool) Iterator {
 
 // Art 索引迭代器
 type artIterator struct {
+	reverse bool // 是否降序遍历 todo 扩展点：转换为配置项成员
+	// todo 优化点：采取效率更高的迭代方式
 	curIndex int     // 当前遍历的下标位置
-	reverse  bool    // 是否降序遍历
 	values   []*Item // 类型复用, 存放 key + 位置索引信息
 }
 
 func newARTIterator(tree goart.Tree, reverse bool) *artIterator {
-	// 内置迭代方法无法满足个性化的迭代需求, 取出元素存入数组中再进行迭代
 	var idx int
 	if reverse {
 		idx = tree.Size() - 1
 	}
 	values := make([]*Item, tree.Size())
-	// 定义函数参数, 处理遍历的每个元素
+	// 定义遍历函数, 处理遍历的每个元素
+	// 暂时将所有项放入数组中进行操作
 	saveValues := func(node goart.Node) bool {
 		item := &Item{
 			key: node.Key(),

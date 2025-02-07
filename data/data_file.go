@@ -17,36 +17,36 @@ const (
 	// DataFileNameSuffix 数据文件后缀
 	DataFileNameSuffix = ".data"
 
-	// HintFileName Hint文件名称
+	// HintFileName Hint文件全名
 	HintFileName = "hint-index"
 
-	// MergeFinishedFileName merge完成标识文件名称
+	// MergeFinishedFileName merge完成标识文件全名
 	MergeFinishedFileName = "merge-finished"
 
-	// SeqNoFileName 事务序列号文件名称
+	// SeqNoFileName 事务序列号文件全名
 	SeqNoFileName = "merge-finished"
 )
 
 // DataFile 数据文件
 type DataFile struct {
 	FileId    uint32        // 文件id
-	WriteOff  int64         // 文件已写入偏移量, 用于活跃文件写入
+	WriteOff  int64         // 文件已写入偏移量, 用于活跃文件写入操作
 	IoManager fio.IOManager // IO读写管理
 }
 
-// OpenDataFile 打开数据文件并构造 DataFile 实例
+// OpenDataFile 打开数据文件
 func OpenDataFile(dirPath string, fileId uint32, ioType fio.FileIOType) (*DataFile, error) {
 	fileName := GetDataFileName(dirPath, fileId)
 	return newDataFile(fileName, fileId, ioType)
 }
 
-// OpenHintFile 打开 Hint 索引文件并构造 DataFile 实例
+// OpenHintFile 打开 Hint 索引文件
 func OpenHintFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, HintFileName)
 	return newDataFile(fileName, 0, fio.StandardFIO)
 }
 
-// OpenMergeFinishedFile 打开 merge 完成标识文件并构造 DataFile 实例
+// OpenMergeFinishedFile 打开 merge 完成标识文件
 func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, MergeFinishedFileName)
 	return newDataFile(fileName, 0, fio.StandardFIO)
@@ -79,15 +79,14 @@ func newDataFile(fileName string, fileId uint32, ioType fio.FileIOType) (*DataFi
 	}, nil
 }
 
-// ReadLogRecord 对当前数据文件从指定偏移量开始读取一条日志记录
-// 返回一个 LogRecord 实例和对应字节长度
+// ReadLogRecord 从偏移量 offset 开始读取一条日志记录
 func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 	// 获取当前文件总长度
 	fileSize, err := df.IoManager.Size()
 	if err != nil {
 		return nil, 0, err
 	}
-	// 以固定最大长度读取 Header 头部
+	// 以固定最大长度读取 Header 头部, 只需保证完整包括一条日志记录即可
 	var headerBytes int64 = maxLogRecordHeaderSize
 	// 如果固定最大长度超过文件剩余长度则读取剩余长度数据, 避免 EOF
 	if offset+maxLogRecordHeaderSize > fileSize {
@@ -100,8 +99,8 @@ func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 
 	// 解码
 	header, headerSize := decodeLogRecordHeader(headerBuf)
-	// 已读取到文件末尾, 无数据返回 EOF 错误
-	// todo 是否无效判断？
+	// 解码失败, 读取的字节不包含新的reader头部, 表示已读取到文件末尾
+	// todo 优化点：根据写入偏移量判断, 避免额外的磁盘IO
 	if header == nil {
 		return nil, 0, io.EOF
 	}
@@ -114,16 +113,14 @@ func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 	// 计算日志记录总长度
 	var recordSize = headerSize + keySize + valueSize
 
-	// 构建 logRecord 实例
+	// 读取数据部分, 构建 logRecord 实例
 	logRecord := &LogRecord{Type: header.recordType}
-	if keySize > 0 || valueSize > 0 {
-		kvBuf, err := df.readNBytes(keySize+valueSize, offset+headerSize)
-		if err != nil {
-			return nil, 0, err
-		}
-		logRecord.Key = kvBuf[:keySize]
-		logRecord.Value = kvBuf[keySize:]
+	kvBuf, err := df.readNBytes(keySize+valueSize, offset+headerSize)
+	if err != nil {
+		return nil, 0, err
 	}
+	logRecord.Key = kvBuf[:keySize]
+	logRecord.Value = kvBuf[keySize:]
 
 	// 校验数据完整性, 生成 CRC 值进行比较
 	crc := getLogRecordCRC(logRecord, headerBuf[crc32.Size:headerSize])
@@ -145,7 +142,7 @@ func (df *DataFile) Write(buf []byte) error {
 	return nil
 }
 
-// WriteHintRecord 写入构建索引相关信息数据
+// WriteHintRecord 写入构建索引所需的相关数据
 func (df *DataFile) WriteHintRecord(key []byte, pos *LogRecordPos) error {
 	// 转换为对应的 LogRecord 实例进行写入
 	record := &LogRecord{
@@ -181,7 +178,7 @@ func (df *DataFile) SetIOManager(dirPath string, ioType fio.FileIOType) error {
 	return nil
 }
 
-// 对当前数据文件从 offset 开始读取 n 个字节
+// 从偏移量 offset 开始读取 n 个字节
 func (df *DataFile) readNBytes(n int64, offset int64) (b []byte, err error) {
 	b = make([]byte, n)
 	_, err = df.IoManager.Read(b, offset)

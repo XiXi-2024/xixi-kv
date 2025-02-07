@@ -9,19 +9,20 @@ import (
 // Indexer 抽象索引操作接口
 type Indexer interface {
 	// Put 新增元素
+	// 允许 key 为 nil
 	// 重复添加会覆盖并返回旧值
 	Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
 
-	// Get 根据 key 获取元素
+	// Get 获取元素
 	Get(key []byte) *data.LogRecordPos
 
-	// Delete 根据 key 删除元素
+	// Delete 删除元素
 	Delete(key []byte) (*data.LogRecordPos, bool)
 
-	// Size 返回元素个数
+	// Size 获取元素个数
 	Size() int
 
-	// Iterator 返回新的迭代器
+	// Iterator 获取索引迭代器
 	Iterator(reverse bool) Iterator
 
 	// Close 关闭索引
@@ -56,7 +57,7 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 }
 
 // Item BTree节点实现
-// todo 应当位于具体索引的文件中定义？
+// todo 优化点：重构为公共数据结构
 type Item struct {
 	key []byte
 	pos *data.LogRecordPos
@@ -69,24 +70,24 @@ func (ai *Item) Less(bi btree.Item) bool {
 
 // Iterator 通用索引迭代器接口
 type Iterator interface {
-	// Rewind 迭代器重置回到起点
+	// Rewind 迭代器重置
 	Rewind()
 
-	// Seek 返回首个大于(小于)等于指定 key 的目标 key
+	// Seek 游标移动到指定 key 的元素
 	Seek(key []byte)
 
-	// Next 遍历下一个元素
+	// Next 游标移动到下一元素
 	Next()
 
-	// Valid 判断是否未到达末尾
+	// Valid 判断是否迭代完成
 	Valid() bool
 
-	// Key 返回当前位置的 key
+	// Key 获取当前游标指向元素的 key
 	Key() []byte
 
-	// Value 返回当前位置的 value
+	// Value 获取当前游标指向元素的 value
 	Value() *data.LogRecordPos
 
-	// Close 关闭迭代器 释放相关资源
+	// Close 关闭迭代器
 	Close()
 }

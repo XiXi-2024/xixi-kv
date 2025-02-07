@@ -6,32 +6,34 @@ import (
 	"path/filepath"
 )
 
-// 索引文件名称
+// 索引文件全名
 const bptreeIndexFileName = "bptree-index"
 
 // Bucket 名称
 var indexBucketName = []byte("bitcask-index")
 
 // BPlusTree 可持久化 B+ 树索引实现
-// 底层库支持并发访问 无需加锁
+// 底层库支持并发访问, 无需加锁
 // https://github.com/etcd-io/bbolt
 type BPlusTree struct {
-	tree *bbolt.DB // 实际为单独的存储引擎
+	// todo 优化点：替换为更轻量级的实现
+	tree *bbolt.DB // 底层为单独的存储引擎
 }
 
+// NewBPlusTree 创建新索引实例
 func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTree {
 	opts := bbolt.DefaultOptions
 	// 可自定义配置项
-	opts.NoSync = !syncWrites // 是否不进行立即持久化
-	// 打开索引文件 后续将索引持久化到磁盘中
+	opts.NoSync = !syncWrites
+	// 打开索引文件并创建索引实例, 后续将索引持久化到磁盘中
 	bptree, err := bbolt.Open(filepath.Join(dirPath, bptreeIndexFileName), 0644, opts)
 	if err != nil {
 		panic("failed to open bptree")
 	}
 
-	// Update 方法内自动开启事务
+	// 开启事务进行操作
 	if err := bptree.Update(func(tx *bbolt.Tx) error {
-		// 创建对应的 bucket 实例 用于后续的数据操作
+		// 创建对应的 bucket 实例, 用于后续的数据操作
 		_, err := tx.CreateBucketIfNotExists(indexBucketName)
 		return err
 	}); err != nil {
@@ -59,7 +61,6 @@ func (bpt *BPlusTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
 
 func (bpt *BPlusTree) Get(key []byte) *data.LogRecordPos {
 	var pos *data.LogRecordPos
-	// View 方法自动开启只读事务, 方法内仅允许数据读取操作
 	if err := bpt.tree.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(indexBucketName)
 		value := bucket.Get(key)
@@ -135,7 +136,7 @@ func newBptreeIterator(tree *bbolt.DB, reverse bool) *bptreeIterator {
 }
 
 func (bpi *bptreeIterator) Rewind() {
-	// 根据配置项将游标指向开头或末尾
+	// 根据配置项将游标重置到开头或末尾
 	if bpi.reverse {
 		bpi.currKey, bpi.currValue = bpi.cursor.Last()
 	} else {

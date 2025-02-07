@@ -43,6 +43,7 @@ type DB struct {
 }
 
 // Stat 实时统计信息
+// todo 扩展点：后续进行维护和利用
 type Stat struct {
 	KeyNum          uint  // 当前 key 的数量
 	DataFileNum     uint  // 当前数据文件数量
@@ -278,7 +279,7 @@ func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
 
 	// 利用索引迭代器进行遍历
 	iterator := db.index.Iterator(false)
-	// 使用完成后必须关闭 当选择 B+ 树索引实现时存在事务, 如果不即时关闭可能导致读写事务互斥阻塞
+	// 使用完成后必须关闭, 当选择 B+ 树索引实现时存在事务, 如果不即时关闭可能导致读写事务互斥阻塞
 	defer iterator.Close()
 	for iterator.Rewind(); iterator.Valid(); iterator.Next() {
 		value, err := db.getValueByPosition(iterator.Value())
@@ -288,7 +289,7 @@ func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
 
 		// 将遍历的每个 key/value 交给传入的函数进行处理
 		if !fn(iterator.Key(), value) {
-			// 函数返回false时终止遍历
+			// 函数返回 false 时终止遍历
 			break
 		}
 	}
@@ -315,7 +316,7 @@ func (db *DB) Close() error {
 		return err
 	}
 
-	// 如果选择 B+ 树索引实现, 不存在索引加载流程, 无法借此获得事务 id
+	// 如果选择 B+ 树索引实现, 不存在索引加载流程, 无法借此获得事务id
 	// 需要在关闭数据库时将当前最新事务 id 持久化
 	seqNoFile, err := data.OpenSeqNoFile(db.options.DirPath)
 	if err != nil {
@@ -358,7 +359,7 @@ func (db *DB) Sync() error {
 	return db.activeFile.Sync()
 }
 
-// 将日志记录追加到当前活跃文件 加锁
+// 将日志记录追加到当前活跃文件, 加锁
 func (db *DB) appendLogRecordWithLock(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
@@ -425,21 +426,20 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 	return pos, nil
 }
 
-// 设置新的活跃文件
-// 存在并发问题
+// 创建并设置新活跃文件
+// todo bug：存在并发问题
 func (db *DB) setActiveDataFile() error {
-	// 获取新的文件id 实际为自增
+	// 通过原活跃文件id自增获取新的文件id
 	var initialFileId uint32 = 0
 	if db.activeFile != nil {
 		initialFileId = db.activeFile.FileId + 1
 	}
-	// 获取新的数据文件
-	// 通过用户配置文件的配置项获取文件地址
+	// 创建并打开新的数据文件
 	dataFile, err := data.OpenDataFile(db.options.DirPath, initialFileId, fio.StandardFIO)
 	if err != nil {
 		return err
 	}
-
+	// 设置为新活跃文件
 	db.activeFile = dataFile
 	return nil
 }
