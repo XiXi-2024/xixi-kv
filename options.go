@@ -4,13 +4,15 @@ import "os"
 
 // Options 用户配置项
 type Options struct {
-	DirPath            string      // 数据文件目录
-	DataFileSize       int64       // 数据文件存储阈值
-	SyncWrites         bool        // 每次写数据是否立即持久化标识
-	BytesPerSync       uint        // 触发持久化操作的字节写入阈值
-	IndexType          IndexerType // 索引类型
-	MMapAtStartup      bool        // 是否启用 MMap 加速数据加载标识
-	DataFileMergeRatio float32     // 执行 merge 的无效数据占比阈值
+	DirPath      string // 数据文件目录
+	DataFileSize int64  // 单个数据文件最大容量, 单位字节
+	// todo 扩展点：新增为 1. 立即持久化 2. 每隔 1 秒持久化 3. 未持久化数据达到阈值持久化
+	SyncWrites   bool        // 每次写数据是否立即持久化标识
+	BytesPerSync uint        // 触发持久化操作的字节写入阈值
+	IndexType    IndexerType // 索引类型
+	// todo 扩展点：新增为 1. 标准文件IO 2. MMap 3.缓冲IO ...
+	MMapAtStartup      bool    // 是否启用 MMap 加速数据加载标识
+	DataFileMergeRatio float32 // 执行 merge 的无效数据占比阈值
 }
 
 // IteratorOptions 索引迭代器配置项

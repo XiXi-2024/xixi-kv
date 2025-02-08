@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,19 +26,20 @@ const (
 
 // DB bitcask存储引擎客户端
 type DB struct {
-	options         Options // 用户配置项
-	mu              *sync.RWMutex
-	fileIds         []int                     // 数据文件id集合, 仅用于索引加载
-	activeFile      *data.DataFile            // 当前活跃文件, 允许读写
-	olderFiles      map[uint32]*data.DataFile // 旧数据文件, 只读
-	index           index.Indexer             // 内存索引
-	seqNo           uint64                    // 事务id, 全局递增
-	isMerging       bool                      // merge 执行状态标识
-	seqNoFileExists bool                      // 事务序列号文件存在标识
-	isInitial       bool                      // 首次初始化数据目录标识, 用于事务提交功能禁用校验
-	fileLock        *flock.Flock              // 文件锁实例, 用于释放锁操作
-	bytesWrite      uint                      // 累计写入字节数, 用于持久化策略
-	reclaimSize     int64                     // 当前无效数据量
+	options    Options // 用户配置项
+	mu         *sync.RWMutex
+	fileIds    []int                     // 数据文件 id 集合, 仅用于索引加载
+	activeFile *data.DataFile            // 当前活跃文件, 允许读写
+	olderFiles map[uint32]*data.DataFile // 旧数据文件, 只读
+	index      index.Indexer             // 内存索引
+	seqNo      uint64                    // 事务id
+	isMerging  bool                      // merge 执行状态标识
+	// todo 优化点：省略
+	seqNoFileExists bool         // 事务序列号文件存在标识
+	isInitial       bool         // 首次初始化数据目录标识
+	fileLock        *flock.Flock // 文件锁
+	bytesWrite      uint         // 尚未持久化的总数据量, 单位字节
+	reclaimSize     int64        // 当前无效数据量
 }
 
 // Stat 实时统计信息
@@ -75,36 +75,38 @@ func (db *DB) Stat() *Stat {
 
 // Open 客户端初始化
 func Open(options Options) (*DB, error) {
-	// 配置项校验
+	// 校验配置项
 	if err := checkOptions(options); err != nil {
 		return nil, err
 	}
 
+	// 是否为首次加载标识
 	var isInitial bool
-	// 判断数据目录是否存在, 不存在则创建
+
+	// 数据目录不存在则创建
 	if _, err := os.Stat(options.DirPath); os.IsNotExist(err) {
-		isInitial = true // 数据目录不存在, 视为首次加载
+		isInitial = true
 		if err := os.MkdirAll(options.DirPath, os.ModePerm); err != nil {
 			return nil, err
 		}
 	}
-	// 数据目录存在但为空, 视为首次加载
+
 	entries, err := os.ReadDir(options.DirPath)
 	if err != nil {
 		return nil, err
 	}
+	// 数据目录为空
 	if len(entries) == 0 {
 		isInitial = true
 	}
 
-	// 同一数据目录只允许由一个进程加载一次, 构建的 DB 实例唯一
-	// 基于文件互斥锁实现进程互斥
+	// 尝试获取文件锁
+	// 通过文件锁确保多进程下同一数据目录的 DB 实例唯一
 	fileLock := flock.New(filepath.Join(options.DirPath, fileLockName))
-	hold, err := fileLock.TryLock() // 尝试获取锁
+	hold, err := fileLock.TryLock()
 	if err != nil {
 		return nil, err
 	}
-	// 获取锁失败, 抛出错误
 	if !hold {
 		return nil, ErrDatabaseIsUsing
 	}
@@ -119,8 +121,10 @@ func Open(options Options) (*DB, error) {
 		fileLock:   fileLock,
 	}
 
-	// 加载 merge 临时目录中的数据文件
-	if err := db.loadMergeFiles(); err != nil {
+	// 尝试加载 merge 临时目录中的数据文件
+	// merge 失败时 nonMergeFileId 为 0, 可表示该情况
+	nonMergeFileId, err := db.loadMergeFiles()
+	if err != nil {
 		return nil, err
 	}
 
@@ -129,13 +133,13 @@ func Open(options Options) (*DB, error) {
 		return nil, err
 	}
 
-	// 如果选择使用 B+ 树索引实现, 无需加载索引到内存
+	// 索引实现选择可持久化 B+ 树, 无需加载索引到内存
 	if options.IndexType == BPlusTree {
-		// 未加载索引, 需要从文件中加载事务id
+		// 从文件中加载事务 id
 		if err := db.loadSeqNo(); err != nil {
 			return nil, err
 		}
-		// 未加载索引, 需要更新活跃文件的偏移量
+		// 更新活跃文件偏移量
 		if db.activeFile != nil {
 			size, err := db.activeFile.IoManager.Size()
 			if err != nil {
@@ -147,18 +151,18 @@ func Open(options Options) (*DB, error) {
 		return db, nil
 	}
 
-	// 先尝试使用 hint 文件加载索引
+	// 尝试使用 hint 文件快速加载索引
 	if err := db.loadIndexFromHintFile(); err != nil {
 		return nil, err
 	}
 
 	// 加载索引
-	if err := db.loadIndexFromDataFiles(); err != nil {
+	if err := db.loadIndexFromDataFiles(nonMergeFileId); err != nil {
 		return nil, err
 	}
 
 	// 当前仅支持使用 MMap 实例加速数据加载, 加载完成后切换为标准文件 IO 实例
-	// todo 未来可自实现 MMap 实现的写入和持久化功能, 之后无需切换
+	// todo 优化点：未来自实现 MMap 实现的写入和持久化功能后重构
 	if db.options.MMapAtStartup {
 		if err := db.resetIoType(); err != nil {
 			return nil, err
@@ -168,34 +172,35 @@ func Open(options Options) (*DB, error) {
 	return db, nil
 }
 
-// Backup 备份数据库, 将数据目录中的数据文件拷贝到指定目录中
+// Backup 数据库备份
 func (db *DB) Backup(dir string) error {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
+	// 将数据目录中的数据文件拷贝到指定目录中
 	return utils.CopyDir(db.options.DirPath, dir, []string{fileLockName})
 }
 
-// Put 写入key/value数据
+// Put 新增元素
 func (db *DB) Put(key []byte, value []byte) error {
-	// 判断 key 是否合法
+	// 校验 key 是否为 nil
 	if len(key) == 0 {
 		return ErrKeyIsEmpty
 	}
 
-	// 构造 LogRecord 结构体
+	// 构造日志记录实例
 	logRecord := &data.LogRecord{
 		Key:   logRecordKeyWithSeq(key, nonTransactionSeqNo),
 		Value: value,
 		Type:  data.LogRecordNormal,
 	}
 
-	// 将日志记录追加到数据文件
+	// 将日志记录追加到当前活跃文件
 	pos, err := db.appendLogRecordWithLock(logRecord)
 	if err != nil {
 		return err
 	}
 
-	// 更新索引位置信息, 并维护无效数据量
+	// 更新索引, 并维护无效数据量
 	if oldPos := db.index.Put(key, pos); oldPos != nil {
 		db.reclaimSize += int64(oldPos.Size)
 	}
@@ -207,7 +212,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 func (db *DB) Get(key []byte) ([]byte, error) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	// 判断key是否合法
+	// 校验 key 是否为 nil
 	if len(key) == 0 {
 		return nil, ErrKeyIsEmpty
 	}
@@ -224,17 +229,16 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 
 // Delete 根据 key 删除数据
 func (db *DB) Delete(key []byte) error {
-	// 验证 key 是否合法
+	// 校验 key 是否为 nil
 	if len(key) == 0 {
 		return ErrKeyIsEmpty
 	}
 
-	// key 不存在直接返回 避免重复向磁盘数据文件追加墓碑值
 	if pos := db.index.Get(key); pos == nil {
 		return nil
 	}
 
-	// 构造 LogRecord 设置删除状态 作为墓碑值追加到数据文件中
+	// 构造 LogRecord 设置删除状态, 作为墓碑值追加到数据文件中
 	logRecord := &data.LogRecord{
 		Key:  logRecordKeyWithSeq(key, nonTransactionSeqNo),
 		Type: data.LogRecordDeleted,
@@ -272,14 +276,14 @@ func (db *DB) ListKeys() [][]byte {
 	return keys
 }
 
-// Fold 遍历数据库中所有 key/value 数据 由传入的函数逐个进行自定义操作 直到遍历完成或函数返回false终止遍历
+// Fold 对数据库所有项执行自定义操作
 func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
 	// 利用索引迭代器进行遍历
 	iterator := db.index.Iterator(false)
-	// 使用完成后必须关闭, 当选择 B+ 树索引实现时存在事务, 如果不即时关闭可能导致读写事务互斥阻塞
+	// 使用完成后必须关闭, 否则可能导致 B+ 树索引的读写事务互斥阻塞
 	defer iterator.Close()
 	for iterator.Rewind(); iterator.Valid(); iterator.Next() {
 		value, err := db.getValueByPosition(iterator.Value())
@@ -287,7 +291,7 @@ func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
 			return err
 		}
 
-		// 将遍历的每个 key/value 交给传入的函数进行处理
+		// 将遍历的每项交给传入函数处理
 		if !fn(iterator.Key(), value) {
 			// 函数返回 false 时终止遍历
 			break
@@ -326,13 +330,15 @@ func (db *DB) Close() error {
 		Key:   []byte(seqNoKey),
 		Value: []byte(strconv.FormatUint(db.seqNo, 10)),
 	}
-
 	encRecord, _ := data.EncodeLogRecord(record)
 	if err := seqNoFile.Write(encRecord); err != nil {
 		return err
 	}
+	if err := seqNoFile.Sync(); err != nil {
+		return err
+	}
 
-	// 关闭当前活跃文件
+	// 关闭当前活跃文件, 自动持久化
 	if err := db.activeFile.Close(); err != nil {
 		return err
 	}
@@ -355,7 +361,7 @@ func (db *DB) Sync() error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
-	// 仅持久化当前活跃文件即可
+	// 仅持久化当前活跃文件
 	return db.activeFile.Sync()
 }
 
@@ -366,9 +372,9 @@ func (db *DB) appendLogRecordWithLock(logRecord *data.LogRecord) (*data.LogRecor
 	return db.appendLogRecord(logRecord)
 }
 
-// 将日志记录追加到当前活跃文件, 不加锁
+// 将日志记录追加到当前活跃文件
 func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
-	// 判断当前是否存在活跃文件, 不存在则创建
+	// 如果数据库为空, 先创建数据文件并设置为活跃文件
 	if db.activeFile == nil {
 		if err := db.setActiveDataFile(); err != nil {
 			return nil, err
@@ -395,8 +401,7 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 	// 累加当前写入字节
 	db.bytesWrite += uint(size)
 
-	// 执行配置项指定的持久化策略
-	// 当指定累计到达阈值持久化策略且当前已达到阈值 或 指定立即持久化策略, 则执行持久化操作
+	// 执行配置的持久化策略
 	var needSync = db.options.SyncWrites
 	if !needSync && db.options.BytesPerSync > 0 && db.bytesWrite >= db.options.BytesPerSync {
 		needSync = true
@@ -407,9 +412,7 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 			return nil, err
 		}
 		// 持久化后清空累计值
-		if db.bytesWrite > 0 {
-			db.bytesWrite = 0
-		}
+		db.bytesWrite = 0
 	}
 
 	// 构造内存索引信息返回
@@ -436,7 +439,6 @@ func (db *DB) sync() error {
 }
 
 // 创建并设置新活跃文件
-// todo bug：存在并发问题
 func (db *DB) setActiveDataFile() error {
 	// 通过原活跃文件id自增获取新的文件id
 	var initialFileId uint32 = 0
@@ -459,28 +461,26 @@ func (db *DB) loadDataFiles() error {
 	if err != nil {
 		return err
 	}
-
 	var fileIds []int
-	// 遍历目录 筛取以 .data 结尾的文件
+	// 遍历目录, 筛取数据文件
 	for _, entry := range dirEntries {
 		if !strings.HasSuffix(entry.Name(), data.DataFileNameSuffix) {
 			continue
 		}
-		// 解析文件名, 转换为文件id
+		// 解析文件名称
 		splitNames := strings.Split(entry.Name(), ".")
 		fileId, err := strconv.Atoi(splitNames[0])
-		// 文件名不符合规范, 解析失败
+		// 文件名称不合法
 		if err != nil {
 			return ErrDataDirectoryCorrupted
 		}
 		fileIds = append(fileIds, fileId)
 	}
 
-	// 对文件id排序, 保证从小到大加载
-	sort.Ints(fileIds)
 	db.fileIds = fileIds
 
-	// 遍历文件id, 构建对应的数据文件实例
+	// 按文件 id 从小到大加载, 保证最终得到最新数据
+	// 由于 ReadDir 方法底层已按文件名进行排序, 按顺序遍历得到的文件 id 已有序
 	for i, fid := range fileIds {
 		// 根据配置项创建指定类型的 IO 管理实例
 		ioType := fio.StandardFIO
@@ -503,23 +503,10 @@ func (db *DB) loadDataFiles() error {
 }
 
 // 从数据文件中加载索引
-func (db *DB) loadIndexFromDataFiles() error {
-	// 未加载数据文件, 数据库为空, 直接返回
+func (db *DB) loadIndexFromDataFiles(nonMergeFileId uint32) error {
+	// 数据库为空
 	if len(db.fileIds) == 0 {
 		return nil
-	}
-
-	// 判断是否发生 merge, 即判断是否存在标识文件
-	// 如果发生 merge, 从完成标识文件中获取未参与 merge 的最近数据文件id
-	hasMerge, nonMergeFileId := false, uint32(0)
-	mergeFinFileName := filepath.Join(db.options.DirPath, data.DataFileNameSuffix)
-	if _, err := os.Stat(mergeFinFileName); err == nil {
-		fid, err := db.getNonMergeFileId(db.options.DirPath)
-		if err != nil {
-			return err
-		}
-		hasMerge = true
-		nonMergeFileId = fid
 	}
 
 	// 更新索引逻辑封装为局部函数实现复用
@@ -542,11 +529,11 @@ func (db *DB) loadIndexFromDataFiles() error {
 	// 临时事务序列号, 更新获取最大值
 	var currentSeqNo uint64 = nonTransactionSeqNo
 
-	// 从小到大遍历数据文件 id, 顺序更新索引, 确保索引记录最新的日志记录位置信息
+	// 从小到大遍历数据文件 id 顺序更新索引, 保证最终索引记录最新数据信息
 	for i, fid := range db.fileIds {
 		var fileId = uint32(fid)
 		// 已通过 hint 文件加载, 无需重复加载
-		if hasMerge && fileId < nonMergeFileId {
+		if fileId < nonMergeFileId {
 			continue
 		}
 		// 获取文件 id 对应的 DataFile 实例
@@ -574,6 +561,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 			// 解析 key, 提取真实 key 和 seq 事务前缀
 			realKey, seqNo := parseLogRecordKey(logRecord.Key)
 
+			// todo 未知：hint文件加载时未更新事务 id, 可能存在问题？
 			// 判断当前日志记录是否属于事务提交
 			if seqNo == nonTransactionSeqNo {
 				// 日志记录属于非事务提交, 直接更新索引
@@ -607,7 +595,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 			offset += size
 		}
 
-		// 当前为活跃文件时需更新文件实例的WriteOff, 供之后追加写入
+		// 当前为活跃文件时需更新文件实例的 WriteOff, 供之后追加写入
 		if i == len(db.fileIds)-1 {
 			db.activeFile.WriteOff = offset
 		}
@@ -619,7 +607,8 @@ func (db *DB) loadIndexFromDataFiles() error {
 	return nil
 }
 
-// 校验配置项是否合法
+// 配置项校验
+// todo 优化点：完善校验
 func checkOptions(options Options) error {
 	if options.DirPath == "" {
 		return errors.New("database dir path is empty")
@@ -654,6 +643,7 @@ func (db *DB) getValueByPosition(logRecordPos *data.LogRecordPos) ([]byte, error
 	}
 
 	// 判断是否已被删除
+	// 当索引删除失败时, 可能导致索引非 nil 而日志记录标记已删除的情况
 	if logRecord.Type == data.LogRecordDeleted {
 		return nil, ErrKeyNotFound
 	}

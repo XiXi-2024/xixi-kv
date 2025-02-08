@@ -29,8 +29,8 @@ const (
 
 // DataFile 数据文件
 type DataFile struct {
-	FileId    uint32        // 文件id
-	WriteOff  int64         // 文件已写入偏移量, 用于活跃文件写入操作
+	FileId    uint32        // 文件 id
+	WriteOff  int64         // 文件数据末尾偏移量, 供活跃文件执行写入操作
 	IoManager fio.IOManager // IO读写管理
 }
 

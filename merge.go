@@ -98,6 +98,7 @@ func (db *DB) Merge() error {
 	}
 
 	// 创建新临时 DB 实例操作临时目录, 从而避免并发冲突
+	// todo 优化点：直接创建 DB 实例？
 	mergeOptions := db.options
 	mergeOptions.DirPath = mergePath
 	mergeOptions.SyncWrites = false // 加快 merge 速度
@@ -185,11 +186,11 @@ func (db *DB) getMergePath() string {
 }
 
 // 尝试加载 merge 临时目录
-func (db *DB) loadMergeFiles() error {
+func (db *DB) loadMergeFiles() (uint32, error) {
 	mergePath := db.getMergePath()
 	// 未进行过 merge
 	if _, err := os.Stat(mergePath); os.IsNotExist(err) {
-		return nil
+		return 0, nil
 	}
 
 	defer func() {
@@ -200,7 +201,7 @@ func (db *DB) loadMergeFiles() error {
 	// 读取目录中所有文件
 	dirEntries, err := os.ReadDir(mergePath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 是否存在 merge 完成文件标识
@@ -224,13 +225,13 @@ func (db *DB) loadMergeFiles() error {
 
 	// merge 未完成
 	if !mergeFinished {
-		return nil
+		return 0, nil
 	}
 
 	// 从标识文件中取出未参与 merge 的最近数据文件 id
-	nonMergeFileId, err := db.getNonMergeFileId(mergePath)
+	nonMergeFileId, err := db.getNonMergeFileId()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 数据目录中删除参与 merge 的旧数据文件
@@ -241,7 +242,7 @@ func (db *DB) loadMergeFiles() error {
 		// 如果存在则删除
 		if _, err := os.Stat(fileName); err == nil {
 			if err := os.Remove(fileName); err != nil {
-				return err
+				return 0, err
 			}
 		}
 	}
@@ -251,17 +252,17 @@ func (db *DB) loadMergeFiles() error {
 		srcPath := filepath.Join(mergePath, fileName)
 		destPath := filepath.Join(db.options.DirPath, fileName)
 		if err := os.Rename(srcPath, destPath); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	return nil
+	return nonMergeFileId, nil
 }
 
 // 获取 merge 完成标识文件中保存的未参与 merge 的最近数据文件id
-// todo 优化点：重构为取消 dirPath 参数
-func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
-	mergeFinishedFile, err := data.OpenMergeFinishedFile(dirPath)
+func (db *DB) getNonMergeFileId() (uint32, error) {
+	mergeFinFileName := filepath.Join(db.getMergePath(), data.MergeFinishedFileName)
+	mergeFinishedFile, err := data.OpenMergeFinishedFile(mergeFinFileName)
 	if err != nil {
 		return 0, err
 	}
@@ -290,7 +291,7 @@ func (db *DB) loadIndexFromHintFile() error {
 		return err
 	}
 
-	// 读取文件 遍历日志记录
+	// 读取文件
 	var offset int64 = 0
 	for {
 		logRecord, size, err := hintFile.ReadLogRecord(offset)
