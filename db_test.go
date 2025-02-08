@@ -1,6 +1,7 @@
 package xixi_bitcask_kv
 
 import (
+	"fmt"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
 	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
 	"github.com/gofrs/flock"
@@ -371,5 +372,58 @@ func destroyDB(db *DB) {
 		if err != nil {
 			panic(err)
 		}
+	}
+}
+
+var n = 600000
+var db *DB
+var keys [][]byte
+var value []byte
+
+func init() {
+	opts := DefaultOptions
+	dir, _ := os.MkdirTemp("", "bitcask-go-benchmark")
+	fmt.Println(dir)
+	opts.DirPath = dir
+	var err error
+	db, err = Open(opts)
+	if err != nil {
+		panic(err)
+	}
+
+	keys = make([][]byte, n)
+	for i := 0; i < n; i++ {
+		keys[i] = utils.GetTestKey(i)
+	}
+	value = utils.RandomValue(1024)
+}
+
+func BenchmarkDB_Put(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = db.Put(keys[i], value)
+	}
+}
+
+func BenchmarkDB_Get(b *testing.B) {
+	for i := 0; i < n; i++ {
+		_ = db.Put(keys[i], value)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = db.Get(utils.GetTestKey(i))
+	}
+}
+
+func BenchmarkDB_Delete(b *testing.B) {
+	for i := 0; i < n; i++ {
+		_ = db.Put(keys[i], value)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = db.Delete(keys[i])
 	}
 }
