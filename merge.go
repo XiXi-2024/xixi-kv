@@ -261,8 +261,7 @@ func (db *DB) loadMergeFiles() (uint32, error) {
 
 // 获取 merge 完成标识文件中保存的未参与 merge 的最近数据文件id
 func (db *DB) getNonMergeFileId() (uint32, error) {
-	mergeFinFileName := filepath.Join(db.getMergePath(), data.MergeFinishedFileName)
-	mergeFinishedFile, err := data.OpenMergeFinishedFile(mergeFinFileName)
+	mergeFinishedFile, err := data.OpenMergeFinishedFile(db.getMergePath())
 	if err != nil {
 		return 0, err
 	}
