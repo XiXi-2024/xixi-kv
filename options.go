@@ -2,6 +2,18 @@ package xixi_bitcask_kv
 
 import "os"
 
+type SyncStrategy byte
+
+const (
+	Always SyncStrategy = iota // 立即持久化
+
+	Everysec // 每隔 1 秒持久化
+
+	Threshold // 新写入数据量达到阈值持久化
+
+	No // 由操作系统决定
+)
+
 // Options 用户配置项
 type Options struct {
 	DirPath      string // 数据文件目录
