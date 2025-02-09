@@ -6,7 +6,20 @@ import (
 	"github.com/google/btree"
 )
 
+// IndexType 索引实现类型枚举
+type IndexType = int8
+
+const (
+	// Btree B树索引
+	Btree IndexType = iota + 1
+	// ART 自适应基数树索引
+	ART
+	// BPTree B+树索引
+	BPTree
+)
+
 // Indexer 抽象索引操作接口
+// todo 扩展点：新增map索引
 type Indexer interface {
 	// Put 新增元素
 	// 允许 key 为 nil
@@ -28,18 +41,6 @@ type Indexer interface {
 	// Close 关闭索引
 	Close() error
 }
-
-// IndexType 索引实现类型枚举
-type IndexType = int8
-
-const (
-	// Btree B树索引
-	Btree IndexType = iota + 1
-	// ART 自适应基数树索引
-	ART
-	// BPTree B+树索引
-	BPTree
-)
 
 // NewIndexer 根据类型创建对应的索引实现
 // todo 可设置为 DB 方法？

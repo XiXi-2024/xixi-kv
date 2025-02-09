@@ -1,30 +1,34 @@
 package xixi_bitcask_kv
 
-import "os"
+import (
+	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
+	"github.com/XiXi-2024/xixi-bitcask-kv/index"
+	"os"
+)
 
 type SyncStrategy byte
 
 const (
-	Always SyncStrategy = iota // 立即持久化
+	No SyncStrategy = iota
+
+	Always // 立即持久化
 
 	Everysec // 每隔 1 秒持久化
 
-	Threshold // 新写入数据量达到阈值持久化
-
-	No // 由操作系统决定
+	Threshold // 新写入数据量达到阈值持久化 // 由操作系统决定
 )
 
 // Options 用户配置项
 type Options struct {
-	DirPath      string // 数据文件目录
-	DataFileSize int64  // 单个数据文件最大容量, 单位字节
-	// todo 扩展点：新增为 1. 立即持久化 2. 每隔 1 秒持久化 3. 未持久化数据达到阈值持久化
-	SyncWrites   bool        // 每次写数据是否立即持久化标识
-	BytesPerSync uint        // 触发持久化操作的字节写入阈值
-	IndexType    IndexerType // 索引类型
-	// todo 扩展点：新增为 1. 标准文件IO 2. MMap 3.缓冲IO ...
-	MMapAtStartup      bool    // 是否启用 MMap 加速数据加载标识
-	DataFileMergeRatio float32 // 执行 merge 的无效数据占比阈值
+	DirPath      string // 数据目录
+	DataFileSize int64  // 数据文件最大容量, 单位字节
+	// todo 优化点：实现各个持久化策略
+	SyncStrategy       SyncStrategy    // 持久化策略
+	SyncWrites         bool            // 每次写数据是否立即持久化标识
+	BytesPerSync       uint            // 新写入数据量阈值, 未启动策略时为 0
+	IndexType          index.IndexType // 索引类型
+	FileIOType         fio.FileIOType  // 文件 IO 类型
+	DataFileMergeRatio float32         // 执行 merge 的无效数据占比阈值
 }
 
 // IteratorOptions 索引迭代器配置项
@@ -39,31 +43,19 @@ type IteratorOptions struct {
 type WriteBatchOptions struct {
 	// 单个批次最大日志记录数量
 	MaxBatchNum uint
-
 	// 提交事务时是否立即持久化
 	SyncWrites bool
 }
 
-type IndexerType = int8
-
-const (
-	// BTree 索引
-	BTree IndexerType = iota + 1
-	// ART 自适应基数树索引
-	ART
-	// BPlusTree B+树索引
-	BPlusTree
-)
-
 // DefaultOptions 默认Options, 供示例程序使用
 var DefaultOptions = Options{
-	DirPath:            os.TempDir(),      // 默认使用系统临时目录
-	DataFileSize:       256 * 1024 * 1024, // 256MB
-	SyncWrites:         false,             // 默认非立即持久化
-	BytesPerSync:       0,                 // 默认值 0, 表示不开启功能
-	IndexType:          BTree,             // 默认使用 B 树
-	MMapAtStartup:      true,              // 默认启用
-	DataFileMergeRatio: 0.5,               // 无效数据占一半时清理
+	DirPath:            os.TempDir(),
+	DataFileSize:       256 * 1024, // 256MB
+	SyncWrites:         false,
+	BytesPerSync:       0,
+	IndexType:          index.Btree,     // 默认使用 B 树
+	FileIOType:         fio.StandardFIO, // 默认选择 mmap 实现
+	DataFileMergeRatio: 0.5,             // 无效数据占一半时清理
 }
 
 // DefaultIteratorOptions 默认迭代器Options, 供测试使用

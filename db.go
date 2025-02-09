@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
-	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
 	"github.com/XiXi-2024/xixi-bitcask-kv/index"
 	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
 	"github.com/gofrs/flock"
@@ -38,8 +37,8 @@ type DB struct {
 	seqNoFileExists bool         // 事务序列号文件存在标识
 	isInitial       bool         // 首次初始化数据目录标识
 	fileLock        *flock.Flock // 文件锁
-	bytesWrite      uint         // 尚未持久化的总数据量, 单位字节
-	reclaimSize     int64        // 当前无效数据量
+	bytesWrite      uint         // 新写入数据量, 单位字节
+	reclaimSize     int64        // 无效数据量, 单位字节
 }
 
 // Stat 实时统计信息
@@ -134,14 +133,14 @@ func Open(options Options) (*DB, error) {
 	}
 
 	// 索引实现选择可持久化 B+ 树, 无需加载索引到内存
-	if options.IndexType == BPlusTree {
+	if options.IndexType == index.BPTree {
 		// 从文件中加载事务 id
 		if err := db.loadSeqNo(); err != nil {
 			return nil, err
 		}
 		// 更新活跃文件偏移量
 		if db.activeFile != nil {
-			size, err := db.activeFile.IoManager.Size()
+			size, err := db.activeFile.ReadWriter.Size()
 			if err != nil {
 				return nil, err
 			}
@@ -159,14 +158,6 @@ func Open(options Options) (*DB, error) {
 	// 加载索引
 	if err := db.loadIndexFromDataFiles(nonMergeFileId); err != nil {
 		return nil, err
-	}
-
-	// 当前仅支持使用 MMap 实例加速数据加载, 加载完成后切换为标准文件 IO 实例
-	// todo 优化点：未来自实现 MMap 实现的写入和持久化功能后重构
-	if db.options.MMapAtStartup {
-		if err := db.resetIoType(); err != nil {
-			return nil, err
-		}
 	}
 
 	return db, nil
@@ -334,7 +325,7 @@ func (db *DB) Close() error {
 	if err := seqNoFile.Write(encRecord); err != nil {
 		return err
 	}
-	if err := seqNoFile.Sync(); err != nil {
+	if err := seqNoFile.Close(); err != nil {
 		return err
 	}
 
@@ -414,7 +405,6 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 		// 持久化后清空累计值
 		db.bytesWrite = 0
 	}
-
 	// 构造内存索引信息返回
 	pos := &data.LogRecordPos{Fid: db.activeFile.FileId, Offset: writeOff, Size: uint32(size)}
 	return pos, nil
@@ -446,7 +436,7 @@ func (db *DB) setActiveDataFile() error {
 		initialFileId = db.activeFile.FileId + 1
 	}
 	// 创建并打开新的数据文件
-	dataFile, err := data.OpenDataFile(db.options.DirPath, initialFileId, fio.StandardFIO)
+	dataFile, err := data.OpenDataFile(db.options.DirPath, initialFileId, db.options.FileIOType)
 	if err != nil {
 		return err
 	}
@@ -482,12 +472,7 @@ func (db *DB) loadDataFiles() error {
 	// 按文件 id 从小到大加载, 保证最终得到最新数据
 	// 由于 ReadDir 方法底层已按文件名进行排序, 按顺序遍历得到的文件 id 已有序
 	for i, fid := range fileIds {
-		// 根据配置项创建指定类型的 IO 管理实例
-		ioType := fio.StandardFIO
-		if db.options.MMapAtStartup {
-			ioType = fio.MemoryMap
-		}
-		dataFile, err := data.OpenDataFile(db.options.DirPath, uint32(fid), ioType)
+		dataFile, err := data.OpenDataFile(db.options.DirPath, uint32(fid), db.options.FileIOType)
 		if err != nil {
 			return err
 		}
@@ -684,21 +669,5 @@ func (db *DB) loadSeqNo() error {
 
 	db.seqNo = seqNo
 	db.seqNoFileExists = true
-	return nil
-}
-
-// 将 IO 管理实现重置为标准文件 IO
-func (db *DB) resetIoType() error {
-	if db.activeFile == nil {
-		return nil
-	}
-	if err := db.activeFile.SetIOManager(db.options.DirPath, fio.StandardFIO); err != nil {
-		return err
-	}
-	for _, dataFile := range db.olderFiles {
-		if err := dataFile.SetIOManager(db.options.DirPath, fio.StandardFIO); err != nil {
-			return err
-		}
-	}
 	return nil
 }

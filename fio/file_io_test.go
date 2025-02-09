@@ -11,7 +11,7 @@ import (
 func TestNewFileIOManager(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "a.data")
 	//t.Log(path)
-	fio, err := NewFileIOManager(path)
+	fio, err := NewFileIO(path)
 	defer destroyFile(path)
 
 	assert.Nil(t, err)
@@ -25,7 +25,7 @@ func TestNewFileIOManager(t *testing.T) {
 func TestFileIO_Read(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "a.data")
 	//t.Log(path)
-	fio, err := NewFileIOManager(path)
+	fio, err := NewFileIO(path)
 	defer destroyFile(path)
 	assert.Nil(t, err)
 	assert.NotNil(t, fio)
@@ -54,7 +54,7 @@ func TestFileIO_Read(t *testing.T) {
 func TestFileIO_Write(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "a.data")
 	//t.Log(path)
-	fio, err := NewFileIOManager(path)
+	fio, err := NewFileIO(path)
 	defer destroyFile(path)
 	assert.Nil(t, err)
 	assert.NotNil(t, fio)
@@ -79,7 +79,7 @@ func TestFileIO_Write(t *testing.T) {
 func TestFileIO_Close(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "a.data")
 	//t.Log(path)
-	fio, err := NewFileIOManager(path)
+	fio, err := NewFileIO(path)
 	defer destroyFile(path)
 	assert.Nil(t, err)
 	assert.NotNil(t, fio)
@@ -92,7 +92,7 @@ func TestFileIO_Close(t *testing.T) {
 func TestFileIO_Sync(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "a.data")
 	//t.Log(path)
-	fio, err := NewFileIOManager(path)
+	fio, err := NewFileIO(path)
 	defer destroyFile(path)
 	assert.Nil(t, err)
 	assert.NotNil(t, fio)

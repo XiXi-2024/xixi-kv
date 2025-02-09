@@ -3,6 +3,7 @@ package xixi_bitcask_kv
 import (
 	"encoding/binary"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-bitcask-kv/index"
 	"sync"
 	"sync/atomic"
 )
@@ -14,6 +15,7 @@ const nonTransactionSeqNo uint64 = 0
 var txnFinKey = []byte("txn-fin")
 
 // WriteBatch 事务客户端
+// todo 优化点：新增方法结束自动提交的事务形式
 type WriteBatch struct {
 	options       WriteBatchOptions
 	mu            *sync.Mutex
@@ -25,7 +27,7 @@ type WriteBatch struct {
 func (db *DB) NewWriteBatch(opts WriteBatchOptions) *WriteBatch {
 	// 如果选择 B+ 树索引实现、事务序列号未加载、非首次加载数据目录, 则禁用事务提交功能
 	// 首次加载时事务序列号为 0, 但无法加载得到, 故进行特殊判断
-	if db.options.IndexType == BPlusTree && !db.seqNoFileExists && !db.isInitial {
+	if db.options.IndexType == index.BPTree && !db.seqNoFileExists && !db.isInitial {
 		panic("cannot use write batch, seq no file not exists")
 	}
 	return &WriteBatch{

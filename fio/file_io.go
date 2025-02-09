@@ -2,19 +2,16 @@ package fio
 
 import "os"
 
-// FileIO 标准系统文件 IO 实现
+// FileIO 标准文件 IO 实现
 type FileIO struct {
-	fd *os.File // 系统文件描述符
+	fd *os.File
 }
 
-// NewFileIOManager 创建 FileIO 实例
-func NewFileIOManager(fileName string) (*FileIO, error) {
+func NewFileIO(fileName string) (*FileIO, error) {
 	// 打开文件, 不存在则创建
 	fd, err := os.OpenFile(
 		fileName,
-		// 不存在则创建, 读写模式打开文件, 追加形式写入
 		os.O_CREATE|os.O_RDWR|os.O_APPEND,
-		// 文件权限
 		DataFilePerm,
 	)
 	if err != nil {

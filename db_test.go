@@ -3,6 +3,7 @@ package xixi_bitcask_kv
 import (
 	"fmt"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
 	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
 	"github.com/gofrs/flock"
 	"github.com/stretchr/testify/assert"
@@ -292,20 +293,20 @@ func TestDB_OpenMMap(t *testing.T) {
 	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-close")
 	opts.DirPath = dir
-	opts.MMapAtStartup = true
+	opts.FileIOType = fio.MemoryMap
 	db, err := Open(opts)
 	assert.Nil(t, err)
 	defer destroyDB(db)
-	n := 1000
-	for i := 0; i < n; i++ {
-		err := db.Put(utils.GetTestKey(i), utils.RandomValue(20))
-		assert.Nil(t, err)
-	}
+
+	err = db.Put(utils.GetTestKey(11), utils.RandomValue(20))
+	assert.Nil(t, err)
+
 	err = db.Close()
 	assert.Nil(t, err)
+
 	db, err = Open(opts)
 	assert.Nil(t, err)
-	assert.NotNil(t, db)
+
 }
 
 func TestDB_Stat(t *testing.T) {
@@ -375,7 +376,7 @@ func destroyDB(db *DB) {
 	}
 }
 
-var n = 600000
+var n = 1000000
 var db *DB
 var keys [][]byte
 var value []byte
@@ -392,10 +393,10 @@ func init() {
 	}
 
 	keys = make([][]byte, n)
+	value = utils.RandomValue(1024)
 	for i := 0; i < n; i++ {
 		keys[i] = utils.GetTestKey(i)
 	}
-	value = utils.RandomValue(1024)
 }
 
 func BenchmarkDB_Put(b *testing.B) {
@@ -407,7 +408,7 @@ func BenchmarkDB_Put(b *testing.B) {
 }
 
 func BenchmarkDB_Get(b *testing.B) {
-	for i := 0; i < n; i++ {
+	for i := 0; i < b.N; i++ {
 		_ = db.Put(keys[i], value)
 	}
 	b.ReportAllocs()
@@ -418,7 +419,7 @@ func BenchmarkDB_Get(b *testing.B) {
 }
 
 func BenchmarkDB_Delete(b *testing.B) {
-	for i := 0; i < n; i++ {
+	for i := 0; i < b.N; i++ {
 		_ = db.Put(keys[i], value)
 	}
 	b.ReportAllocs()

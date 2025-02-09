@@ -29,12 +29,13 @@ const (
 
 // DataFile 数据文件
 type DataFile struct {
-	FileId    uint32        // 文件 id
-	WriteOff  int64         // 文件数据末尾偏移量, 供活跃文件执行写入操作
-	IoManager fio.IOManager // IO读写管理
+	FileId     uint32         // 文件 id
+	WriteOff   int64          // 文件数据末尾偏移量, 供活跃文件执行写入操作
+	ReadWriter fio.ReadWriter // IO 实现
 }
 
 // OpenDataFile 打开数据文件
+// todo 优化点：重构除去不是必须的
 func OpenDataFile(dirPath string, fileId uint32, ioType fio.FileIOType) (*DataFile, error) {
 	fileName := GetDataFileName(dirPath, fileId)
 	return newDataFile(fileName, fileId, ioType)
@@ -65,24 +66,24 @@ func GetDataFileName(dirPath string, fileId uint32) string {
 
 // 根据完整文件名称打开文件并构造 DataFile 实例
 func newDataFile(fileName string, fileId uint32, ioType fio.FileIOType) (*DataFile, error) {
-	// 获取该文件的 IO 管理实例
-	ioManager, err := fio.NewIOManager(fileName, ioType)
+	// 根据配置的类型和路径创建新 IO 管理器实例
+	readWriter, err := fio.NewReadWriter(fileName, ioType)
 	if err != nil {
 		return nil, err
 	}
 
 	// 构造该文件的 DataFile 实例并返回
 	return &DataFile{
-		FileId:    fileId,
-		WriteOff:  0,
-		IoManager: ioManager,
+		FileId:     fileId,
+		WriteOff:   0,
+		ReadWriter: readWriter,
 	}, nil
 }
 
 // ReadLogRecord 从偏移量 offset 开始读取一条日志记录
 func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 	// 获取当前文件总长度
-	fileSize, err := df.IoManager.Size()
+	fileSize, err := df.ReadWriter.Size()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -133,7 +134,7 @@ func (df *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 
 // Write 文件写入
 func (df *DataFile) Write(buf []byte) error {
-	n, err := df.IoManager.Write(buf)
+	n, err := df.ReadWriter.Write(buf)
 	if err != nil {
 		return err
 	}
@@ -155,32 +156,32 @@ func (df *DataFile) WriteHintRecord(key []byte, pos *LogRecordPos) error {
 
 // Sync 文件持久化
 func (df *DataFile) Sync() error {
-	return df.IoManager.Sync()
+	return df.ReadWriter.Sync()
 }
 
 // Close 文件关闭
 func (df *DataFile) Close() error {
-	return df.IoManager.Close()
+	return df.ReadWriter.Close()
 }
 
-// SetIOManager 设置数据文件的 IO 管理实现
-func (df *DataFile) SetIOManager(dirPath string, ioType fio.FileIOType) error {
-	// 关闭原文件
-	if err := df.IoManager.Close(); err != nil {
+// SetFileIOType 设置指定类型 IO 实现
+func (df *DataFile) SetFileIOType(dirPath string, ioType fio.FileIOType) error {
+	// 关闭原实例
+	if err := df.ReadWriter.Close(); err != nil {
 		return err
 	}
-	// 重新打开文件
-	ioManager, err := fio.NewIOManager(GetDataFileName(dirPath, df.FileId), ioType)
+	// 创建指定类型的新实例
+	ioManager, err := fio.NewReadWriter(GetDataFileName(dirPath, df.FileId), ioType)
 	if err != nil {
 		return err
 	}
-	df.IoManager = ioManager
+	df.ReadWriter = ioManager
 	return nil
 }
 
 // 从偏移量 offset 开始读取 n 个字节
 func (df *DataFile) readNBytes(n int64, offset int64) (b []byte, err error) {
 	b = make([]byte, n)
-	_, err = df.IoManager.Read(b, offset)
+	_, err = df.ReadWriter.Read(b, offset)
 	return b, err
 }

@@ -13,7 +13,7 @@ func TestMMap_Read(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "mmap-a.data")
 	//t.Log(path)
 	//defer destroyFile(path) // win 环境下手动删除
-	mmapIO, err := NewMMapIOManager(path)
+	mmapIO, err := NewMMap(path)
 	assert.Nil(t, err)
 
 	// 文件为空
@@ -23,7 +23,7 @@ func TestMMap_Read(t *testing.T) {
 	assert.Equal(t, io.EOF, err)
 
 	// 文件中存在数据
-	fio, err := NewFileIOManager(path)
+	fio, err := NewFileIO(path)
 	assert.Nil(t, err)
 	_, err = fio.Write([]byte("aa"))
 	assert.Nil(t, err)
@@ -32,7 +32,7 @@ func TestMMap_Read(t *testing.T) {
 	_, err = fio.Write([]byte("cc"))
 	assert.Nil(t, err)
 
-	mmapIO2, err := NewMMapIOManager(path)
+	mmapIO2, err := NewMMap(path)
 	assert.Nil(t, err)
 	size, err := mmapIO2.Size()
 	assert.Nil(t, err)

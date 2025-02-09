@@ -23,6 +23,7 @@ const maxLogRecordHeaderSize = binary.MaxVarintLen32*2 + 5
 
 // LogRecord 日志记录数据内容
 // 以追加形式写入, 故称为日志记录
+// todo 优化点：日志记录组织形式改为block
 type LogRecord struct {
 	Key   []byte
 	Value []byte
