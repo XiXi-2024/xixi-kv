@@ -16,6 +16,8 @@ const (
 	ART
 	// BPTree B+树索引
 	BPTree
+	// HashMap Map索引
+	HashMap
 )
 
 // Indexer 抽象索引操作接口
@@ -43,7 +45,6 @@ type Indexer interface {
 }
 
 // NewIndexer 根据类型创建对应的索引实现
-// todo 可设置为 DB 方法？
 func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 	switch typ {
 	case Btree:
@@ -52,19 +53,19 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 		return NewART()
 	case BPTree:
 		return NewBPlusTree(dirPath, sync)
+	case HashMap:
+		return NewMap()
 	default:
 		panic("unsupported index type")
 	}
 }
 
-// Item BTree节点实现
-// todo 优化点：重构为公共数据结构
+// Item 通用结点
 type Item struct {
 	key []byte
 	pos *data.LogRecordPos
 }
 
-// Less 实现自定义比较器
 func (ai *Item) Less(bi btree.Item) bool {
 	return bytes.Compare(ai.key, bi.(*Item).key) == -1
 }
