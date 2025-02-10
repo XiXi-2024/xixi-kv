@@ -28,7 +28,7 @@ func handlePut(c *gin.Context) {
 	var data map[string]string
 	err := c.ShouldBind(&data)
 	if err != nil {
-		c.String(http.StatusBadRequest, fmt.Sprintf("parse error:%v", err))
+		c.String(http.StatusBadRequest, fmt.Sprintf("parse error: %v", err))
 	}
 
 	for key, value := range data {
@@ -57,7 +57,7 @@ func handleDelete(c *gin.Context) {
 	err := db.Delete([]byte(key))
 	if err != nil && !errors.Is(err, bitcask.ErrKeyNotFound) {
 		c.String(http.StatusInternalServerError, err.Error())
-		slog.Error("failed to get value:%v", key)
+		slog.Error("failed to get value: %v", key)
 		return
 	}
 	c.Header("Content-Type", "application/json")
@@ -89,7 +89,7 @@ func main() {
 		context.String(http.StatusNotFound, "not found")
 	})
 
-	//注册处理方法
+	// 注册处理方法
 	engine.POST("/bitcask/put", handlePut)
 	engine.GET("/bitcask/get", handleGet)
 	engine.DELETE("/bitcask/delete", handleDelete)
