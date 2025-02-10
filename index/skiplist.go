@@ -8,12 +8,12 @@ import (
 	"sync"
 )
 
-type SkipList struct {
+type SkipLinkedList struct {
 	list *skiplist.SkipList
 	lock *sync.RWMutex
 }
 
-func (s *SkipList) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (s *SkipLinkedList) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	s.lock.Lock()
 
 	oldItem := s.list.Get(key)
@@ -26,7 +26,7 @@ func (s *SkipList) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	return oldValue
 }
 
-func (s *SkipList) Get(key []byte) *data.LogRecordPos {
+func (s *SkipLinkedList) Get(key []byte) *data.LogRecordPos {
 	s.lock.RLock()
 	oldItem := s.list.Get(key)
 	s.lock.RUnlock()
@@ -36,7 +36,7 @@ func (s *SkipList) Get(key []byte) *data.LogRecordPos {
 	return oldItem.Value.(*data.LogRecordPos)
 }
 
-func (s *SkipList) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (s *SkipLinkedList) Delete(key []byte) (*data.LogRecordPos, bool) {
 	s.lock.Lock()
 	oldItem := s.list.Remove(key)
 	var oldValue *data.LogRecordPos
@@ -50,20 +50,20 @@ func (s *SkipList) Delete(key []byte) (*data.LogRecordPos, bool) {
 	return oldValue, true
 }
 
-func (s *SkipList) Size() int {
+func (s *SkipLinkedList) Size() int {
 	return s.list.Len()
 }
 
-func (s *SkipList) Iterator(reverse bool) Iterator {
+func (s *SkipLinkedList) Iterator(reverse bool) Iterator {
 	return newSkipListIterator(reverse, s.list)
 }
 
-func (s *SkipList) Close() error {
+func (s *SkipLinkedList) Close() error {
 	return nil
 }
 
-func NewSkipList() *SkipList {
-	return &SkipList{
+func NewSkipList() *SkipLinkedList {
+	return &SkipLinkedList{
 		list: skiplist.New(skiplist.Bytes),
 		lock: &sync.RWMutex{},
 	}
