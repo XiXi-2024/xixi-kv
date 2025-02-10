@@ -2,9 +2,14 @@
 
 package utils
 
+import (
+	"syscall"
+	"unsafe"
+)
+
 // Win系统下获取指定目录所在磁盘的剩余空间大小
 func availableDiskSizeWin(dirPath string) (uint64, error) {
-	// 加载 kernel32.dll
+	//加载 kernel32.dll
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	// 获取 GetDiskFreeSpaceExW 函数
 	procGetDiskFreeSpaceExW := kernel32.NewProc("GetDiskFreeSpaceExW")

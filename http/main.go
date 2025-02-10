@@ -1,122 +1,101 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	bitcask "github.com/XiXi-2024/xixi-bitcask-kv"
-	"log"
+	"github.com/gin-gonic/gin"
+	"golang.org/x/exp/slog"
 	"net/http"
 	"os"
+	"strings"
 )
 
 var db *bitcask.DB
 
 func init() {
-	// 初始化 DB 实例
 	var err error
 	options := bitcask.DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-http")
 	options.DirPath = dir
 	db, err = bitcask.Open(options)
 	if err != nil {
-		panic(fmt.Sprintf("failed to open db: %v", err))
+		panic(fmt.Sprintf("failed to open db:%v", err))
 	}
 }
 
-func handlePut(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPost {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+func handlePut(c *gin.Context) {
+	var data map[string]string
+	err := c.ShouldBind(&data)
+	if err != nil {
+		c.String(http.StatusBadRequest, fmt.Sprintf("parse error:%v", err))
 	}
 
-	var kv map[string]string
-
-	if err := json.NewDecoder(request.Body).Decode(&kv); err != nil {
-		http.Error(writer, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	for key, value := range kv {
-		if err := db.Put([]byte(key), []byte(value)); err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
-			log.Printf("failed to put kv in db: %v\n", err)
+	for key, value := range data {
+		err := db.Put([]byte(key), []byte(value))
+		if err != nil {
+			c.String(http.StatusInternalServerError, err.Error())
+			slog.Error("failed to put:%v", key)
 			return
 		}
 	}
 }
-
-func handleGet(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	key := request.URL.Query().Get("key")
-
+func handleGet(c *gin.Context) {
+	key := c.Query("key")
 	value, err := db.Get([]byte(key))
-	if err != nil && err != bitcask.ErrKeyNotFound {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		log.Printf("failed to get kv in db: %v\n", err)
+	if err != nil && !errors.Is(err, bitcask.ErrKeyNotFound) {
+		c.String(http.StatusInternalServerError, err.Error())
+		slog.Error("failed to get value:%v", key)
 		return
 	}
-
-	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode(string(value))
+	c.Header("Content-Type", "application/json")
+	c.String(http.StatusOK, string(value))
 }
 
-func handleDelete(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodDelete {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	key := request.URL.Query().Get("key")
-
+func handleDelete(c *gin.Context) {
+	key := c.Query("key")
 	err := db.Delete([]byte(key))
-	if err != nil && err != bitcask.ErrKeyIsEmpty {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		log.Printf("failed to get kv in db: %v\n", err)
+	if err != nil && !errors.Is(err, bitcask.ErrKeyNotFound) {
+		c.String(http.StatusInternalServerError, err.Error())
+		slog.Error("failed to get value:%v", key)
 		return
 	}
-
-	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode("OK")
+	c.Header("Content-Type", "application/json")
+	c.String(http.StatusOK, "OK")
 }
 
-func handleListKeys(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+func handleListKeys(c *gin.Context) {
 	keys := db.ListKeys()
-	writer.Header().Set("Content-Type", "application/json")
+	c.Header("Content-Type", "application/json")
 	var result []string
-	for _, k := range keys {
-		result = append(result, string(k))
+	for _, key := range keys {
+		result = append(result, string(key))
 	}
-	_ = json.NewEncoder(writer).Encode(result)
+	c.String(http.StatusOK, strings.Join(result, "\n"))
 }
 
-func handleStat(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+func handleStat(c *gin.Context) {
 	stat := db.Stat()
-	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode(stat)
+	c.Header("Content-Type", "application/json")
+	c.JSON(http.StatusOK, stat)
+
 }
-
 func main() {
-	// 注册处理器
-	http.HandleFunc("/bitcask/put", handlePut)
-	http.HandleFunc("/bitcask/get", handleGet)
-	http.HandleFunc("/bitcask/delete", handleDelete)
-	http.HandleFunc("/bitcask/listkeys", handleListKeys)
-	http.HandleFunc("/bitcask/stat", handleStat)
+	engine := gin.Default()
+	engine.NoMethod(func(context *gin.Context) {
+		context.String(http.StatusMethodNotAllowed, "method not allowed")
+	})
+	engine.NoRoute(func(context *gin.Context) {
+		context.String(http.StatusNotFound, "not found")
+	})
 
-	// 启动 HTTP 服务
-	_ = http.ListenAndServe("localhost:8080", nil)
+	//注册处理方法
+	engine.POST("/bitcask/put", handlePut)
+	engine.GET("/bitcask/get", handleGet)
+	engine.DELETE("/bitcask/delete", handleDelete)
+	engine.GET("/bitcask/list", handleListKeys)
+	engine.GET("/bitcask/stat", handleStat)
+	if err := engine.Run(":8080"); err != nil {
+		panic(err)
+	}
 }
