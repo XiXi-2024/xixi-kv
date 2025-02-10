@@ -289,7 +289,7 @@ func TestDB_Sync(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestDB_OpenMMap(t *testing.T) {
+func TestDB_OpenMMapAccelerate(t *testing.T) {
 	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-close")
 	opts.DirPath = dir
@@ -376,7 +376,7 @@ func destroyDB(db *DB) {
 	}
 }
 
-var n = 1000000
+var n = 5000000
 var db *DB
 var keys [][]byte
 var value []byte
