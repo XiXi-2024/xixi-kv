@@ -38,6 +38,7 @@ func TestSkipList_Get(t *testing.T) {
 	assert.Nil(t, res2)
 	res3 := bt.Put([]byte("a"), &data.LogRecordPos{Fid: 1, Offset: 3})
 	assert.Equal(t, res3.Fid, uint32(1))
+	assert.Equal(t, res3.Fid, uint32(1))
 	assert.Equal(t, res3.Offset, int64(2))
 
 	// 查询重复添加的元素
