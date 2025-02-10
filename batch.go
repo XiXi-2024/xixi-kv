@@ -16,6 +16,7 @@ var txnFinKey = []byte("txn-fin")
 
 // WriteBatch 事务客户端
 // todo 优化点：新增方法结束自动提交的事务形式
+// todo 优化点：新增 Get 方法
 type WriteBatch struct {
 	options       WriteBatchOptions
 	mu            *sync.Mutex

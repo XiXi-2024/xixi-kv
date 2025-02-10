@@ -50,12 +50,12 @@ type WriteBatchOptions struct {
 // DefaultOptions 默认Options, 供示例程序使用
 var DefaultOptions = Options{
 	DirPath:            os.TempDir(),
-	DataFileSize:       256 * 1024, // 256MB
+	DataFileSize:       256 * 1024,
 	SyncWrites:         false,
 	BytesPerSync:       0,
-	IndexType:          index.BTreeIndex, // 默认使用 B 树
-	FileIOType:         fio.StandardFIO,  // 默认选择 mmap 实现
-	DataFileMergeRatio: 0.5,              // 无效数据占一半时清理
+	IndexType:          index.Btree,
+	FileIOType:         fio.StandardFIO,
+	DataFileMergeRatio: 0.5,
 }
 
 // DefaultIteratorOptions 默认迭代器Options, 供测试使用
