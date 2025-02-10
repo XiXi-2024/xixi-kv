@@ -6,15 +6,14 @@ import (
 	"testing"
 )
 
-// 添加
-func TestBTree_Put(t *testing.T) {
-	bt := NewBTree()
+func TestSkipList_Put(t *testing.T) {
+	bt := NewSkipList()
 
 	// 添加 key 为 nil 的元素
 	res1 := bt.Put(nil, &data.LogRecordPos{Fid: 1, Offset: 100})
 	assert.Nil(t, res1)
 
-	// 添加正常元素
+	//添加正常元素
 	res2 := bt.Put([]byte("a"), &data.LogRecordPos{Fid: 1, Offset: 2})
 	assert.Nil(t, res2)
 
@@ -24,9 +23,8 @@ func TestBTree_Put(t *testing.T) {
 	assert.Equal(t, res3.Offset, int64(2))
 }
 
-// 查询
-func TestBTree_Get(t *testing.T) {
-	bt := NewBTree()
+func TestSkipList_Get(t *testing.T) {
+	bt := NewSkipList()
 
 	res1 := bt.Put(nil, &data.LogRecordPos{Fid: 1, Offset: 100})
 	assert.Nil(t, res1)
@@ -40,6 +38,7 @@ func TestBTree_Get(t *testing.T) {
 	assert.Nil(t, res2)
 	res3 := bt.Put([]byte("a"), &data.LogRecordPos{Fid: 1, Offset: 3})
 	assert.Equal(t, res3.Fid, uint32(1))
+	assert.Equal(t, res3.Fid, uint32(1))
 	assert.Equal(t, res3.Offset, int64(2))
 
 	// 查询重复添加的元素
@@ -48,8 +47,8 @@ func TestBTree_Get(t *testing.T) {
 	assert.Equal(t, int64(3), pos2.Offset)
 }
 
-func TestBTree_Delete(t *testing.T) {
-	bt := NewBTree()
+func TestSkipList_Delete(t *testing.T) {
+	bt := NewSkipList()
 	res1 := bt.Put(nil, &data.LogRecordPos{Fid: 1, Offset: 100})
 	assert.Nil(t, res1)
 	// 删除 key 为 nil 的元素
@@ -67,13 +66,13 @@ func TestBTree_Delete(t *testing.T) {
 	assert.Equal(t, res4.Offset, int64(33))
 }
 
-func TestBTree_Iterator(t *testing.T) {
-	bt1 := NewBTree()
-	// BTreeIndex 为空
+func TestSkipList_Iterator(t *testing.T) {
+	bt1 := NewSkipList()
+	// SkipList 为空
 	iter1 := bt1.Iterator(false)
 	assert.Equal(t, false, iter1.Valid())
 
-	// BTreeIndex 非空
+	// SkipList 非空
 	bt1.Put([]byte("code"), &data.LogRecordPos{Fid: 1, Offset: 10})
 	iter2 := bt1.Iterator(false)
 	assert.Equal(t, true, iter2.Valid())

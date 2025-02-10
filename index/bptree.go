@@ -12,16 +12,16 @@ const bptreeIndexFileName = "bptree-index"
 // Bucket 名称
 var indexBucketName = []byte("bitcask-index")
 
-// BPlusTree 可持久化 B+ 树索引实现
+// BPlusTreeIndex 可持久化 B+ 树索引实现
 // 底层库支持并发访问, 无需加锁
 // https://github.com/etcd-io/bbolt
-type BPlusTree struct {
+type BPlusTreeIndex struct {
 	// todo 优化点：替换为更轻量级的实现
 	tree *bbolt.DB // 底层为单独的存储引擎
 }
 
 // NewBPlusTree 创建新索引实例
-func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTree {
+func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTreeIndex {
 	opts := bbolt.DefaultOptions
 	// 可自定义配置项
 	opts.NoSync = !syncWrites
@@ -40,10 +40,10 @@ func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTree {
 		panic("failed to create bucket in bptree")
 	}
 
-	return &BPlusTree{tree: bptree}
+	return &BPlusTreeIndex{tree: bptree}
 }
 
-func (bpt *BPlusTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (bpt *BPlusTreeIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	var oldVal []byte
 	if err := bpt.tree.Update(func(tx *bbolt.Tx) error {
 		// 取出 Bucket 实例进行操作
@@ -59,7 +59,7 @@ func (bpt *BPlusTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
 	return data.DecodeLogRecordPos(oldVal)
 }
 
-func (bpt *BPlusTree) Get(key []byte) *data.LogRecordPos {
+func (bpt *BPlusTreeIndex) Get(key []byte) *data.LogRecordPos {
 	var pos *data.LogRecordPos
 	if err := bpt.tree.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(indexBucketName)
@@ -74,7 +74,7 @@ func (bpt *BPlusTree) Get(key []byte) *data.LogRecordPos {
 	return pos
 }
 
-func (bpt *BPlusTree) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (bpt *BPlusTreeIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
 	var oldVal []byte
 	if err := bpt.tree.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(indexBucketName)
@@ -91,7 +91,7 @@ func (bpt *BPlusTree) Delete(key []byte) (*data.LogRecordPos, bool) {
 	return data.DecodeLogRecordPos(oldVal), true
 }
 
-func (bpt *BPlusTree) Size() int {
+func (bpt *BPlusTreeIndex) Size() int {
 	var size int
 	if err := bpt.tree.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(indexBucketName)
@@ -103,11 +103,11 @@ func (bpt *BPlusTree) Size() int {
 	return size
 }
 
-func (bpt *BPlusTree) Close() error {
+func (bpt *BPlusTreeIndex) Close() error {
 	return bpt.tree.Close()
 }
 
-func (bpt *BPlusTree) Iterator(reverse bool) Iterator {
+func (bpt *BPlusTreeIndex) Iterator(reverse bool) Iterator {
 	return newBptreeIterator(bpt.tree, reverse)
 }
 

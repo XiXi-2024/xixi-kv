@@ -8,19 +8,19 @@ import (
 	"sync"
 )
 
-type Map struct {
+type HashMapIndex struct {
 	mp   map[string]*data.LogRecordPos
 	lock *sync.RWMutex
 }
 
-func NewMap() *Map {
-	return &Map{
+func NewMap() *HashMapIndex {
+	return &HashMapIndex{
 		mp:   map[string]*data.LogRecordPos{},
 		lock: &sync.RWMutex{},
 	}
 }
 
-func (m *Map) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (m *HashMapIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -29,7 +29,7 @@ func (m *Map) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	return oldPos
 }
 
-func (m *Map) Get(key []byte) *data.LogRecordPos {
+func (m *HashMapIndex) Get(key []byte) *data.LogRecordPos {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
@@ -37,7 +37,7 @@ func (m *Map) Get(key []byte) *data.LogRecordPos {
 	return oldPos
 }
 
-func (m *Map) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (m *HashMapIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -46,15 +46,15 @@ func (m *Map) Delete(key []byte) (*data.LogRecordPos, bool) {
 	return oldPos, true
 }
 
-func (m *Map) Size() int {
+func (m *HashMapIndex) Size() int {
 	return len(m.mp)
 }
 
-func (m *Map) Iterator(reverse bool) Iterator {
+func (m *HashMapIndex) Iterator(reverse bool) Iterator {
 	return newMapIterator(m, reverse)
 }
 
-func (m *Map) Close() error {
+func (m *HashMapIndex) Close() error {
 	m.mp = nil
 	return nil
 }
@@ -65,7 +65,7 @@ type mapIterator struct {
 	values   []*Item
 }
 
-func newMapIterator(mp *Map, reverse bool) *mapIterator {
+func newMapIterator(mp *HashMapIndex, reverse bool) *mapIterator {
 	var idx int
 	values := make([]*Item, mp.Size())
 
