@@ -8,24 +8,24 @@ import (
 	"sync"
 )
 
-// BTree B 树索引实现
+// BTreeIndex B 树索引实现
 // https://github.com/google/btree
-type BTree struct {
+type BTreeIndex struct {
 	tree *btree.BTree
 	// 底层实现非线程安全, 需要自行保证
 	lock *sync.RWMutex
 }
 
 // NewBTree 创建新索引实例
-func NewBTree() *BTree {
+func NewBTree() *BTreeIndex {
 	// 返回默认实例
-	return &BTree{
+	return &BTreeIndex{
 		tree: btree.New(33),
 		lock: new(sync.RWMutex),
 	}
 }
 
-func (bt *BTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (bt *BTreeIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	it := &Item{key: key, pos: pos}
 	bt.lock.Lock()
 	oldItem := bt.tree.ReplaceOrInsert(it)
@@ -36,7 +36,7 @@ func (bt *BTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	return oldItem.(*Item).pos
 }
 
-func (bt *BTree) Get(key []byte) *data.LogRecordPos {
+func (bt *BTreeIndex) Get(key []byte) *data.LogRecordPos {
 	bt.lock.RLock()
 	defer bt.lock.RUnlock()
 	it := &Item{key: key}
@@ -47,7 +47,7 @@ func (bt *BTree) Get(key []byte) *data.LogRecordPos {
 	return btreeItem.(*Item).pos
 }
 
-func (bt *BTree) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (bt *BTreeIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
 	it := &Item{key: key}
 	bt.lock.Lock()
 	oldItem := bt.tree.Delete(it)
@@ -58,15 +58,15 @@ func (bt *BTree) Delete(key []byte) (*data.LogRecordPos, bool) {
 	return oldItem.(*Item).pos, true
 }
 
-func (bt *BTree) Size() int {
+func (bt *BTreeIndex) Size() int {
 	return bt.tree.Len()
 }
 
-func (bt *BTree) Close() error {
+func (bt *BTreeIndex) Close() error {
 	return nil
 }
 
-func (bt *BTree) Iterator(reverse bool) Iterator {
+func (bt *BTreeIndex) Iterator(reverse bool) Iterator {
 	if bt.tree == nil {
 		return nil
 	}
@@ -75,7 +75,7 @@ func (bt *BTree) Iterator(reverse bool) Iterator {
 	return newBTreeIterator(bt.tree, reverse)
 }
 
-// BTree 索引迭代器
+// BTreeIndex 索引迭代器
 type btreeIterator struct {
 	reverse bool // 是否降序遍历 todo 扩展点：转换为配置项成员
 	// todo 优化点：采取效率更高的迭代方式

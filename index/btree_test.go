@@ -69,11 +69,11 @@ func TestBTree_Delete(t *testing.T) {
 
 func TestBTree_Iterator(t *testing.T) {
 	bt1 := NewBTree()
-	// BTree 为空
+	// BTreeIndex 为空
 	iter1 := bt1.Iterator(false)
 	assert.Equal(t, false, iter1.Valid())
 
-	// BTree 非空
+	// BTreeIndex 非空
 	bt1.Put([]byte("code"), &data.LogRecordPos{Fid: 1, Offset: 10})
 	iter2 := bt1.Iterator(false)
 	assert.Equal(t, true, iter2.Valid())
