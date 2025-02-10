@@ -37,6 +37,8 @@ func (bt *BTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 }
 
 func (bt *BTree) Get(key []byte) *data.LogRecordPos {
+	bt.lock.RLock()
+	defer bt.lock.RUnlock()
 	it := &Item{key: key}
 	btreeItem := bt.tree.Get(it)
 	if btreeItem == nil {
