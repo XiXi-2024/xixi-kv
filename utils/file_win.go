@@ -2,6 +2,11 @@
 
 package utils
 
+import (
+	"syscall"
+	"unsafe"
+)
+
 // Win系统下获取指定目录所在磁盘的剩余空间大小
 func availableDiskSizeWin(dirPath string) (uint64, error) {
 	// 加载 kernel32.dll
