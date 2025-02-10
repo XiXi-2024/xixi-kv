@@ -18,6 +18,8 @@ const (
 	BPTree
 	// SkipList 跳表索引
 	SkipList
+	// HashMap 哈希索引
+	HashMap
 )
 
 // Indexer 抽象索引操作接口
