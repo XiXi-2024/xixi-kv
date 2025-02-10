@@ -10,7 +10,7 @@ import (
 type IndexType = int8
 
 const (
-	// Btree B树索引
+	// BTree Btree B树索引
 	BTree IndexType = iota + 1
 	// ART 自适应基数树索引
 	ART

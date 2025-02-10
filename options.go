@@ -53,7 +53,7 @@ var DefaultOptions = Options{
 	DataFileSize:       256 * 1024,
 	SyncWrites:         false,
 	BytesPerSync:       0,
-	IndexType:          index.Btree,
+	IndexType:          index.BTree,
 	FileIOType:         fio.StandardFIO,
 	DataFileMergeRatio: 0.5,
 }
