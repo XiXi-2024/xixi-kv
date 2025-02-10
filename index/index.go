@@ -16,6 +16,8 @@ const (
 	ART
 	// BPTree B+树索引
 	BPTree
+	// SkipList 跳表索引
+	Skiplist
 )
 
 // Indexer 抽象索引操作接口
@@ -52,6 +54,8 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 		return NewART()
 	case BPTree:
 		return NewBPlusTree(dirPath, sync)
+	case Skiplist:
+		return NewSkipList()
 	default:
 		panic("unsupported index type")
 	}
