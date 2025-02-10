@@ -13,16 +13,23 @@ type SkipListIndex struct {
 	lock *sync.RWMutex
 }
 
+func NewSkipList() *SkipListIndex {
+	return &SkipListIndex{
+		list: skiplist.New(skiplist.Bytes),
+		lock: &sync.RWMutex{},
+	}
+}
+
 func (s *SkipListIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	oldItem := s.list.Get(key)
 	var oldValue *data.LogRecordPos
 	if oldItem != nil {
 		oldValue = oldItem.Value.(*data.LogRecordPos)
 	}
-	_ = s.list.Set(key, pos)
-	s.lock.Unlock()
+	s.list.Set(key, pos)
 	return oldValue
 }
 
@@ -60,13 +67,6 @@ func (s *SkipListIndex) Iterator(reverse bool) Iterator {
 
 func (s *SkipListIndex) Close() error {
 	return nil
-}
-
-func NewSkipList() *SkipListIndex {
-	return &SkipListIndex{
-		list: skiplist.New(skiplist.Bytes),
-		lock: &sync.RWMutex{},
-	}
 }
 
 type SkipListIterator struct {
