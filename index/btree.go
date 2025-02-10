@@ -10,22 +10,22 @@ import (
 
 // BTree B 树索引实现
 // https://github.com/google/btree
-type BTreeIndex struct {
+type BTree struct {
 	tree *btree.BTree
 	// 底层实现非线程安全, 需要自行保证
 	lock *sync.RWMutex
 }
 
 // NewBTree 创建新索引实例
-func NewBTree() *BTreeIndex {
+func NewBTree() *BTree {
 	// 返回默认实例
-	return &BTreeIndex{
+	return &BTree{
 		tree: btree.New(33),
 		lock: new(sync.RWMutex),
 	}
 }
 
-func (bt *BTreeIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (bt *BTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	it := &Item{key: key, pos: pos}
 	bt.lock.Lock()
 	oldItem := bt.tree.ReplaceOrInsert(it)
@@ -36,7 +36,9 @@ func (bt *BTreeIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
 	return oldItem.(*Item).pos
 }
 
-func (bt *BTreeIndex) Get(key []byte) *data.LogRecordPos {
+func (bt *BTree) Get(key []byte) *data.LogRecordPos {
+	bt.lock.RLock()
+	defer bt.lock.RUnlock()
 	it := &Item{key: key}
 	btreeItem := bt.tree.Get(it)
 	if btreeItem == nil {
@@ -45,7 +47,7 @@ func (bt *BTreeIndex) Get(key []byte) *data.LogRecordPos {
 	return btreeItem.(*Item).pos
 }
 
-func (bt *BTreeIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (bt *BTree) Delete(key []byte) (*data.LogRecordPos, bool) {
 	it := &Item{key: key}
 	bt.lock.Lock()
 	oldItem := bt.tree.Delete(it)
@@ -56,15 +58,15 @@ func (bt *BTreeIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
 	return oldItem.(*Item).pos, true
 }
 
-func (bt *BTreeIndex) Size() int {
+func (bt *BTree) Size() int {
 	return bt.tree.Len()
 }
 
-func (bt *BTreeIndex) Close() error {
+func (bt *BTree) Close() error {
 	return nil
 }
 
-func (bt *BTreeIndex) Iterator(reverse bool) Iterator {
+func (bt *BTree) Iterator(reverse bool) Iterator {
 	if bt.tree == nil {
 		return nil
 	}
