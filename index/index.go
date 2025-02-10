@@ -11,7 +11,7 @@ type IndexType = int8
 
 const (
 	// Btree B树索引
-	Btree IndexType = iota + 1
+	BTree IndexType = iota + 1
 	// ART 自适应基数树索引
 	ART
 	// BPTree B+树索引
@@ -48,7 +48,7 @@ type Indexer interface {
 // todo 可设置为 DB 方法？
 func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 	switch typ {
-	case Btree:
+	case BTree:
 		return NewBTree()
 	case ART:
 		return NewART()

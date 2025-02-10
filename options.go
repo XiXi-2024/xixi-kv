@@ -53,7 +53,7 @@ var DefaultOptions = Options{
 	DataFileSize:       256 * 1024, // 256MB
 	SyncWrites:         false,
 	BytesPerSync:       0,
-	IndexType:          index.Btree,     // 默认使用 B 树
+	IndexType:          index.BTree,     // 默认使用 B 树
 	FileIOType:         fio.StandardFIO, // 默认选择 mmap 实现
 	DataFileMergeRatio: 0.5,             // 无效数据占一半时清理
 }
