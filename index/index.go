@@ -58,6 +58,8 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 		return NewBPlusTree(dirPath, sync)
 	case SkipList:
 		return NewSkipList()
+	case HashMap:
+		return NewMap()
 	default:
 		panic("unsupported index type")
 	}
