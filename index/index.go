@@ -63,14 +63,13 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 	}
 }
 
-// Item BTree节点实现
-// todo 优化点：重构为公共数据结构
+// Item 通用结点
 type Item struct {
 	key []byte
 	pos *data.LogRecordPos
 }
 
-// Less 实现自定义比较器
+// Less 结点比较器
 func (ai *Item) Less(bi btree.Item) bool {
 	return bytes.Compare(ai.key, bi.(*Item).key) == -1
 }
