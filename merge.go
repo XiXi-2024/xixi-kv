@@ -26,37 +26,13 @@ func (db *DB) Merge() error {
 		return nil
 	}
 
+	// 校验是否满足 merge 条件
+	if err := db.mergeCheck(); err != nil {
+		return err
+	}
+
 	// 方法仅部分逻辑需加锁, 不应 defer
 	db.mu.Lock()
-
-	// 校验是否正在进行 merge
-	// 由于 merge 过程中会提前释放锁, 故存在同时尝试进行 merge 的情况
-	if db.isMerging {
-		db.mu.Unlock()
-		return ErrMergeIsProgress
-	}
-
-	// 校验无效数据占比是否达到阈值
-	totalSize, err := utils.DirSize(db.options.DirPath)
-	if err != nil {
-		db.mu.Unlock()
-		return err
-	}
-	if float32(db.reclaimSize)/float32(totalSize) < db.options.DataFileMergeRatio {
-		db.mu.Unlock()
-		return ErrMergeRatioUnreached
-	}
-
-	// 校验数据目录所在磁盘剩余空间是否能容纳 merge 后的数据量
-	availableDiskSize, err := utils.AvailableDiskSize(db.options.DirPath)
-	if err != nil {
-		db.mu.Unlock()
-		return err
-	}
-	if uint64(totalSize-db.reclaimSize) >= availableDiskSize {
-		db.mu.Unlock()
-		return ErrNoEnoughSpaceForMerge
-	}
 
 	// 更新 merge 状态
 	db.isMerging = true
@@ -101,7 +77,7 @@ func (db *DB) Merge() error {
 	// todo 优化点：直接创建 DB 实例？
 	mergeOptions := db.options
 	mergeOptions.DirPath = mergePath
-	mergeOptions.SyncWrites = false // 加快 merge 速度
+	mergeOptions.SyncStrategy = No // 加快 merge 速度
 	mergeDB, err := Open(mergeOptions)
 	if err != nil {
 		return err
@@ -171,6 +147,35 @@ func (db *DB) Merge() error {
 	}
 	if err := mergeFinishedFile.Sync(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// merge 执行时机校验
+func (db *DB) mergeCheck() error {
+	// 校验是否正在进行 merge
+	// 由于 merge 过程中会提前释放锁, 故存在同时尝试进行 merge 的情况
+	if db.isMerging {
+		return ErrMergeIsProgress
+	}
+
+	// 校验无效数据占比是否达到阈值
+	totalSize, err := utils.DirSize(db.options.DirPath)
+	if err != nil {
+		return err
+	}
+	if float32(db.reclaimSize)/float32(totalSize) < db.options.DataFileMergeRatio {
+		return ErrMergeRatioUnreached
+	}
+
+	// 校验数据目录所在磁盘剩余空间是否能容纳 merge 后的数据量
+	availableDiskSize, err := utils.AvailableDiskSize(db.options.DirPath)
+	if err != nil {
+		return err
+	}
+	if uint64(totalSize-db.reclaimSize) >= availableDiskSize {
+		return ErrNoEnoughSpaceForMerge
 	}
 
 	return nil

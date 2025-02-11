@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -35,11 +36,12 @@ type DB struct {
 	seqNo      uint64                    // 事务id
 	isMerging  bool                      // merge 执行状态标识
 	// todo 优化点：省略
-	seqNoFileExists bool         // 事务序列号文件存在标识
-	isInitial       bool         // 首次初始化数据目录标识
-	fileLock        *flock.Flock // 文件锁
-	bytesWrite      uint         // 新写入数据量, 单位字节
-	reclaimSize     int64        // 无效数据量, 单位字节
+	seqNoFileExists bool          // 事务序列号文件存在标识
+	isInitial       bool          // 首次初始化数据目录标识
+	fileLock        *flock.Flock  // 文件锁
+	bytesWrite      uint          // 自上次持久化后累计写入数据量, 单位字节
+	reclaimSize     int64         // 无效数据量, 单位字节
+	closedChan      chan struct{} // 用于控制后台持久化协程关闭的通道
 }
 
 // Stat 实时统计信息
@@ -111,14 +113,16 @@ func Open(options Options) (*DB, error) {
 		return nil, ErrDatabaseIsUsing
 	}
 
+	syncWrites := options.SyncStrategy == Always
 	// 初始化 DB 实例
 	db := &DB{
 		options:    options,
 		mu:         new(sync.RWMutex),
 		olderFiles: make(map[uint32]*data.DataFile),
-		index:      index.NewIndexer(options.IndexType, options.DirPath, options.SyncWrites),
+		index:      index.NewIndexer(options.IndexType, options.DirPath, syncWrites),
 		isInitial:  isInitial,
 		fileLock:   fileLock,
+		closedChan: make(chan struct{}),
 	}
 
 	// 尝试加载 merge 临时目录中的数据文件
@@ -159,6 +163,29 @@ func Open(options Options) (*DB, error) {
 	// 加载索引
 	if err := db.loadIndexFromDataFiles(nonMergeFileId); err != nil {
 		return nil, err
+	}
+
+	if db.options.SyncStrategy == Everysec {
+		go func() {
+			var flushes uint = 0
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if flushes == db.bytesWrite {
+						continue
+					}
+					if err := db.Merge(); err != nil {
+						// 记录错误日志
+						fmt.Printf("failed to merge db: %v\n", err)
+					}
+					flushes = db.bytesWrite
+				case <-db.closedChan:
+					return
+				}
+			}
+		}()
 	}
 
 	return db, nil
@@ -301,6 +328,16 @@ func (db *DB) Close() error {
 		}
 	}()
 
+	// 关闭后台 merge 协程
+	if db.options.SyncStrategy == Everysec && db.closedChan != nil {
+		// 安全关闭
+		select {
+		case <-db.closedChan:
+		default:
+			close(db.closedChan)
+		}
+	}
+
 	if db.activeFile == nil {
 		return nil
 	}
@@ -390,21 +427,24 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 		return nil, err
 	}
 
-	// 累加当前写入字节
+	// 维护累计写入数据量
 	db.bytesWrite += uint(size)
 
 	// 执行配置的持久化策略
-	var needSync = db.options.SyncWrites
-	if !needSync && db.options.BytesPerSync > 0 && db.bytesWrite >= db.options.BytesPerSync {
-		needSync = true
-	}
-	if needSync {
+	syncStrategy := db.options.SyncStrategy
+	if syncStrategy == Always || (syncStrategy == Threshold && db.bytesWrite >= db.options.BytesPerSync) {
 		// 执行持久化操作
 		if err := db.activeFile.Sync(); err != nil {
 			return nil, err
 		}
-		// 持久化后清空累计值
+		// 清空累计值
 		db.bytesWrite = 0
+
+		// 尝试执行一次 merge
+		err := db.Merge()
+		if err != nil {
+			return nil, err
+		}
 	}
 	// 构造内存索引信息返回
 	pos := &data.LogRecordPos{Fid: db.activeFile.FileId, Offset: writeOff, Size: uint32(size)}
@@ -415,6 +455,7 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 func (db *DB) sync() error {
 	// 持久化原活跃文件
 	if err := db.activeFile.Sync(); err != nil {
+		db.bytesWrite = 0
 		return err
 	}
 
@@ -607,6 +648,9 @@ func checkOptions(options Options) error {
 	}
 	if options.FileIOType == fio.MemoryMap && options.DataFileSize > 512*1024*1024 {
 		return errors.New("memory map datafile size should not exceed 512MB")
+	}
+	if options.BytesPerSync > 16*1024*1024 {
+		return errors.New("BytesPerSync should not exceed 16MB")
 	}
 
 	return nil
