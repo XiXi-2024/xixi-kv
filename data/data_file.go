@@ -164,21 +164,6 @@ func (df *DataFile) Close() error {
 	return df.ReadWriter.Close()
 }
 
-// SetFileIOType 设置指定类型 IO 实现
-func (df *DataFile) SetFileIOType(dirPath string, ioType fio.FileIOType) error {
-	// 关闭原实例
-	if err := df.ReadWriter.Close(); err != nil {
-		return err
-	}
-	// 创建指定类型的新实例
-	ioManager, err := fio.NewReadWriter(GetDataFileName(dirPath, df.FileId), ioType)
-	if err != nil {
-		return err
-	}
-	df.ReadWriter = ioManager
-	return nil
-}
-
 // 从偏移量 offset 开始读取 n 个字节
 func (df *DataFile) readNBytes(n int64, offset int64) (b []byte, err error) {
 	b = make([]byte, n)

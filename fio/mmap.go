@@ -1,14 +1,21 @@
 package fio
 
 import (
+	"errors"
 	"github.com/edsrzf/mmap-go"
+	"io"
 	"os"
 )
 
-// todo bug：应与用户配置的最大容量相等
-const dataFileSize = 256 * 1024
+var ErrFileHasBeenClosed = errors.New("file has been closed")
+
+// 选择 mmap 类型 IO 实现时处理数据量不应过大, 且数据文件容量配置参数难以传递
+// 故设置映射空间为 512MB, 由上层保证该 IO 实现下的配置限制
+const dataFileSize = 512 * 1024 * 1024
 
 // MMap 内存文件映射 IO 实现
+// todo 扩展点：预读机制
+// todo 扩展点：批量读写机制
 type MMap struct {
 	file   *os.File
 	data   mmap.MMap
@@ -43,22 +50,39 @@ func NewMMap(fileName string) (*MMap, error) {
 }
 
 func (mmap *MMap) Read(b []byte, offset int64) (int, error) {
-	copy(b, mmap.data[offset:])
-	return len(b), nil
+	if mmap.file == nil {
+		return 0, ErrFileHasBeenClosed
+	}
+	// 计算实际可读取的字节数
+	bytes := min(len(b), int(mmap.offset-offset))
+	if bytes == 0 {
+		return 0, io.EOF
+	}
+	copy(b[:bytes], mmap.data[offset:])
+	return bytes, nil
 }
 
 func (mmap *MMap) Write(b []byte) (int, error) {
+	if mmap.file == nil {
+		return 0, ErrFileHasBeenClosed
+	}
 	copy(mmap.data[mmap.offset:], b)
 	mmap.offset += int64(len(b))
 	return len(b), nil
 }
 
 func (mmap *MMap) Sync() error {
+	if mmap.file == nil {
+		return ErrFileHasBeenClosed
+	}
 	err := mmap.data.Flush()
 	return err
 }
 
 func (mmap *MMap) Close() error {
+	if mmap.file == nil {
+		return ErrFileHasBeenClosed
+	}
 	err := mmap.data.Flush()
 	if err != nil {
 		return err
@@ -77,5 +101,9 @@ func (mmap *MMap) Close() error {
 }
 
 func (mmap *MMap) Size() (int64, error) {
+	if mmap.file == nil {
+		return 0, ErrFileHasBeenClosed
+	}
+	// 通过维护 offset 实现, 故不允许运行中更换 IO 实现
 	return mmap.offset, nil
 }

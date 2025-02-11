@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
 	"github.com/XiXi-2024/xixi-bitcask-kv/index"
 	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
 	"github.com/gofrs/flock"
@@ -603,6 +604,9 @@ func checkOptions(options Options) error {
 	}
 	if options.DataFileMergeRatio < 0 || options.DataFileMergeRatio > 1 {
 		return errors.New("invalid merge ratio, must between 0 and 1")
+	}
+	if options.FileIOType == fio.MemoryMap && options.DataFileSize > 512*1024*1024 {
+		return errors.New("memory map datafile size should not exceed 512MB")
 	}
 
 	return nil
