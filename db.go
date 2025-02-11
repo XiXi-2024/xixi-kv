@@ -50,14 +50,14 @@ type Stat struct {
 	DiskSize        int64 // 数据目录的磁盘占用空间大小
 }
 
-// Stat 获取当前时刻数据库统计信息实例
+// Stat 获取当前时刻数据库统计信息
 func (db *DB) Stat() *Stat {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	var dataFiles = uint(len(db.olderFiles))
+	var dataFileCount = uint(len(db.olderFiles))
 	if db.activeFile != nil {
-		dataFiles += 1
+		dataFileCount += 1
 	}
 
 	dirSize, err := utils.DirSize(db.options.DirPath)
@@ -66,7 +66,7 @@ func (db *DB) Stat() *Stat {
 	}
 	return &Stat{
 		KeyNum:          uint(db.index.Size()),
-		DataFileNum:     dataFiles,
+		DataFileNum:     dataFileCount,
 		ReclaimableSize: db.reclaimSize,
 		DiskSize:        dirSize,
 	}
@@ -267,7 +267,7 @@ func (db *DB) ListKeys() [][]byte {
 	return keys
 }
 
-// Fold 对数据库所有项执行自定义操作
+// Fold 对数据库所有项执行自定义操作, 项改变不会同步数据库
 func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
