@@ -488,12 +488,12 @@ func (db *DB) setActiveDataFile() error {
 }
 
 // 从磁盘中加载数据文件
-func (db *DB) loadDataFiles() ([]int, error) {
+func (db *DB) loadDataFiles() ([]uint32, error) {
 	dirEntries, err := os.ReadDir(db.options.DirPath)
 	if err != nil {
 		return nil, err
 	}
-	fileIds := make([]int, 0, len(dirEntries))
+	fileIds := make([]uint32, 0, len(dirEntries))
 	// 遍历目录, 筛取数据文件
 	for _, entry := range dirEntries {
 		if !strings.HasSuffix(entry.Name(), data.DataFileNameSuffix) {
@@ -506,13 +506,13 @@ func (db *DB) loadDataFiles() ([]int, error) {
 		if err != nil {
 			return nil, ErrDataDirectoryCorrupted
 		}
-		fileIds = append(fileIds, fileId)
+		fileIds = append(fileIds, uint32(fileId))
 	}
 
 	// 按文件 id 从小到大加载, 保证最终得到最新数据
 	// 由于 ReadDir 方法底层已按文件名进行排序, 按顺序遍历得到的文件 id 已有序
 	for i, fid := range fileIds {
-		dataFile, err := data.OpenDataFile(db.options.DirPath, uint32(fid), db.options.FileIOType)
+		dataFile, err := data.OpenDataFile(db.options.DirPath, fid, db.options.FileIOType)
 		if err != nil {
 			return nil, err
 		}
@@ -520,7 +520,7 @@ func (db *DB) loadDataFiles() ([]int, error) {
 		if i == len(fileIds)-1 {
 			db.activeFile = dataFile
 		} else {
-			db.olderFiles[uint32(fid)] = dataFile
+			db.olderFiles[fid] = dataFile
 		}
 	}
 
@@ -528,7 +528,7 @@ func (db *DB) loadDataFiles() ([]int, error) {
 }
 
 // 从数据文件中加载索引
-func (db *DB) loadIndexFromDataFiles(fileIds []int, nonMergeFileId uint32) error {
+func (db *DB) loadIndexFromDataFiles(fileIds []uint32, nonMergeFileId uint32) error {
 	// 数据库为空
 	if len(fileIds) == 0 {
 		return nil
@@ -555,8 +555,7 @@ func (db *DB) loadIndexFromDataFiles(fileIds []int, nonMergeFileId uint32) error
 	var currentSeqNo uint64 = nonTransactionSeqNo
 
 	// 从小到大遍历数据文件 id 顺序更新索引, 保证最终索引记录最新数据信息
-	for i, fid := range fileIds {
-		var fileId = uint32(fid)
+	for i, fileId := range fileIds {
 		// 已通过 hint 文件加载, 无需重复加载
 		if fileId < nonMergeFileId {
 			continue
