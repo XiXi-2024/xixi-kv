@@ -166,7 +166,7 @@ func Open(options Options) (*DB, error) {
 		return nil, err
 	}
 
-	if db.options.SyncStrategy == Everysec {
+	if db.options.EnableBackgroundMerge {
 		go func() {
 			var flushes uint = 0
 			ticker := time.NewTicker(time.Second)
@@ -330,7 +330,7 @@ func (db *DB) Close() error {
 	}()
 
 	// 关闭后台 merge 协程
-	if db.options.SyncStrategy == Everysec && db.closedChan != nil {
+	if db.options.EnableBackgroundMerge && db.closedChan != nil {
 		// 安全关闭
 		select {
 		case <-db.closedChan:
@@ -443,12 +443,6 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 		}
 		// 清空累计值
 		db.bytesWrite = 0
-
-		// 尝试执行一次 merge
-		err := db.Merge()
-		if err != nil {
-			return nil, err
-		}
 	}
 	// 构造内存索引信息返回
 	pos := &data.LogRecordPos{Fid: db.activeFile.FileId, Offset: writeOff, Size: uint32(size)}
@@ -639,7 +633,7 @@ func (db *DB) loadIndexFromDataFiles(fileIds []uint32, nonMergeFileId uint32) er
 }
 
 // 配置项校验
-// todo 优化点：完善校验
+// todo 优化点：完善校验, 采用责任链模式重构
 func checkOptions(options Options) error {
 	if options.DirPath == "" {
 		return errors.New("database dir path is empty")
@@ -656,7 +650,9 @@ func checkOptions(options Options) error {
 	if options.BytesPerSync > 16*1024*1024 {
 		return errors.New("BytesPerSync should not exceed 16MB")
 	}
-
+	if options.SyncStrategy == Threshold && options.BytesPerSync == 0 {
+		return errors.New("SyncStrategy should not never be 0")
+	}
 	return nil
 }
 
