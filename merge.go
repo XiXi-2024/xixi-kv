@@ -73,14 +73,14 @@ func (db *DB) Merge() error {
 		return err
 	}
 
-	// 创建新临时 DB 实例操作临时目录, 从而避免并发冲突
-	// todo 优化点：直接创建 DB 实例？
+	// 创建新临时 DB 实例操作临时目录, 避免并发冲突
+	// 实际仅需要保证 appendLogRecord 方法的执行, 可简化初始化流程
 	mergeOptions := db.options
 	mergeOptions.DirPath = mergePath
 	mergeOptions.SyncStrategy = No // 加快 merge 速度
-	mergeDB, err := Open(mergeOptions)
-	if err != nil {
-		return err
+	mergeDB := &DB{
+		options:    mergeOptions,
+		olderFiles: make(map[uint32]*data.DataFile),
 	}
 
 	// 在 merge 临时目录创建并打开 hint 索引文件
@@ -127,8 +127,10 @@ func (db *DB) Merge() error {
 	if err := hintFile.Close(); err != nil {
 		return err
 	}
-	if err := mergeDB.Close(); err != nil {
-		return err
+	if mergeDB.activeFile != nil {
+		if err := mergeDB.activeFile.Close(); err != nil {
+			return err
+		}
 	}
 
 	// 在 merge 临时目录创建并打开 merge 完成标识文件
@@ -161,7 +163,9 @@ func (db *DB) mergeCheck() error {
 	}
 
 	// 校验无效数据占比是否达到阈值
-	if float32(db.reclaimSize)/float32(db.totalSize) < db.options.DataFileMergeRatio {
+	// 同时总数据量需达到 256MB, 避免小的无效数据过于影响比值
+	if db.totalSize > 256*1024*1024 &&
+		float32(db.reclaimSize)/float32(db.totalSize) < db.options.DataFileMergeRatio {
 		return ErrMergeRatioUnreached
 	}
 
