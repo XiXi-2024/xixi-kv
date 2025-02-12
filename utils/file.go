@@ -8,21 +8,6 @@ import (
 	"strings"
 )
 
-// DirSize 获取指定目录的空间大小
-func DirSize(dirPath string) (int64, error) {
-	var size int64
-	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return nil
-	})
-	return size, err
-}
-
 // AvailableDiskSize 获取磁盘剩余空间大小
 // 当为linux/mac系统时允许 dirPath 为 ""
 func AvailableDiskSize(dirPath string) (uint64, error) {

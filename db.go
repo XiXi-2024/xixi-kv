@@ -40,6 +40,7 @@ type DB struct {
 	fileLock        *flock.Flock  // 文件锁
 	bytesWrite      uint          // 自上次持久化后累计写入数据量, 单位字节
 	reclaimSize     int64         // 无效数据量, 单位字节
+	totalSize       int64         // 数据文件总数据量, 单位字节
 	closedChan      chan struct{} // 用于控制后台持久化协程关闭的通道
 }
 
@@ -62,15 +63,11 @@ func (db *DB) Stat() *Stat {
 		dataFileCount += 1
 	}
 
-	dirSize, err := utils.DirSize(db.options.DirPath)
-	if err != nil {
-		panic(fmt.Sprintf("failed to get dir size : %v", err))
-	}
 	return &Stat{
 		KeyNum:          uint(db.index.Size()),
 		DataFileNum:     dataFileCount,
 		ReclaimableSize: db.reclaimSize,
-		DiskSize:        dirSize,
+		DiskSize:        db.totalSize,
 	}
 }
 
@@ -125,7 +122,7 @@ func Open(options Options) (*DB, error) {
 	}
 
 	// 尝试加载 merge 临时目录中的数据文件
-	// merge 失败时 nonMergeFileId 为 0, 可表示该情况
+	// 当 nonMergeFileId == 0 时可表示 merge 失败, 否则成功
 	nonMergeFileId, err := db.loadMergeFiles()
 	if err != nil {
 		return nil, err
@@ -155,9 +152,13 @@ func Open(options Options) (*DB, error) {
 		return db, nil
 	}
 
-	// 尝试使用 hint 文件快速加载索引
-	if err := db.loadIndexFromHintFile(); err != nil {
-		return nil, err
+	// 如果 merge 成功, 尝试使用 hint 文件快速加载索引
+	if nonMergeFileId > 0 {
+		maxFileId, err := db.loadIndexFromHintFile()
+		if err != nil {
+			return nil, err
+		}
+		nonMergeFileId = min(maxFileId, nonMergeFileId)
 	}
 
 	// 加载索引
@@ -413,6 +414,9 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 	// 编码
 	encRecord, size := data.EncodeLogRecord(logRecord)
 
+	// 维护总数据量
+	db.totalSize += size
+
 	// 活跃文件剩余空间不足, 新建数据文件作为新的活跃文件
 	if db.activeFile.WriteOff+size > db.options.DataFileSize {
 		if err := db.sync(); err != nil {
@@ -536,6 +540,9 @@ func (db *DB) loadIndexFromDataFiles(fileIds []uint32, nonMergeFileId uint32) er
 
 	// 更新索引逻辑封装为局部函数实现复用
 	updateIndex := func(key []byte, typ data.LogRecordType, pos *data.LogRecordPos) {
+		// 维护总数据量
+		db.totalSize += int64(pos.Size)
+
 		var oldPos *data.LogRecordPos
 		// 发现墓碑值同样删除对应的索引信息
 		if typ == data.LogRecordDeleted {

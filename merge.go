@@ -124,10 +124,10 @@ func (db *DB) Merge() error {
 	}
 
 	// 将重写的数据文件和 hint 文件持久化
-	if err := hintFile.Sync(); err != nil {
+	if err := hintFile.Close(); err != nil {
 		return err
 	}
-	if err := mergeDB.Sync(); err != nil {
+	if err := mergeDB.Close(); err != nil {
 		return err
 	}
 
@@ -145,7 +145,7 @@ func (db *DB) Merge() error {
 	if err := mergeFinishedFile.Write(encRecord); err != nil {
 		return err
 	}
-	if err := mergeFinishedFile.Sync(); err != nil {
+	if err := mergeFinishedFile.Close(); err != nil {
 		return err
 	}
 
@@ -161,11 +161,7 @@ func (db *DB) mergeCheck() error {
 	}
 
 	// 校验无效数据占比是否达到阈值
-	totalSize, err := utils.DirSize(db.options.DirPath)
-	if err != nil {
-		return err
-	}
-	if float32(db.reclaimSize)/float32(totalSize) < db.options.DataFileMergeRatio {
+	if float32(db.reclaimSize)/float32(db.totalSize) < db.options.DataFileMergeRatio {
 		return ErrMergeRatioUnreached
 	}
 
@@ -174,7 +170,7 @@ func (db *DB) mergeCheck() error {
 	if err != nil {
 		return err
 	}
-	if uint64(totalSize-db.reclaimSize) >= availableDiskSize {
+	if uint64(db.totalSize-db.reclaimSize) >= availableDiskSize {
 		return ErrNoEnoughSpaceForMerge
 	}
 
@@ -282,20 +278,19 @@ func (db *DB) getNonMergeFileId() (uint32, error) {
 }
 
 // 尝试通过 hint 文件加载索引
-func (db *DB) loadIndexFromHintFile() error {
-	// 校验 hint 文件是否存在
-	hintFileName := filepath.Join(db.options.DirPath, data.HintFileName)
-	if _, err := os.Stat(hintFileName); os.IsNotExist(err) {
-		return nil
-	}
-
+func (db *DB) loadIndexFromHintFile() (uint32, error) {
 	// 打开 hint 文件
+	// 调用该方法说明 merge 必然成功, hint 文件必然存在
+	// 如果手动删去 hint 文件, 会自动创建新的空文件进行读取
 	hintFile, err := data.OpenHintFile(db.options.DirPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	// 读取文件
+	// 实际读取到的最大数据文件 id
+	// 避免 hint 文件被删除导致无法加载的情况
+	var maxFileId uint32 = 0
+
 	var offset int64 = 0
 	for {
 		logRecord, size, err := hintFile.ReadLogRecord(offset)
@@ -303,14 +298,19 @@ func (db *DB) loadIndexFromHintFile() error {
 			if err == io.EOF {
 				break
 			}
-			return err
+			return 0, err
 		}
 
 		// 快速加载索引
 		pos := data.DecodeLogRecordPos(logRecord.Value)
 		db.index.Put(logRecord.Key, pos)
 		offset += size
+
+		// 统计总数据量
+		db.totalSize += int64(pos.Size)
+
+		maxFileId = max(maxFileId, pos.Fid)
 	}
 
-	return nil
+	return maxFileId, nil
 }
