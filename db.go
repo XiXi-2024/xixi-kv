@@ -29,7 +29,6 @@ const (
 type DB struct {
 	options    Options // 用户配置项
 	mu         *sync.RWMutex
-	fileIds    []int                     // 数据文件 id 集合, 仅用于索引加载
 	activeFile *data.DataFile            // 当前活跃文件, 允许读写
 	olderFiles map[uint32]*data.DataFile // 旧数据文件, 只读
 	index      index.Indexer             // 内存索引
@@ -133,7 +132,8 @@ func Open(options Options) (*DB, error) {
 	}
 
 	// 加载数据目录中的数据文件
-	if err := db.loadDataFiles(); err != nil {
+	files, err := db.loadDataFiles()
+	if err != nil {
 		return nil, err
 	}
 
@@ -161,7 +161,7 @@ func Open(options Options) (*DB, error) {
 	}
 
 	// 加载索引
-	if err := db.loadIndexFromDataFiles(nonMergeFileId); err != nil {
+	if err := db.loadIndexFromDataFiles(files, nonMergeFileId); err != nil {
 		return nil, err
 	}
 
@@ -488,12 +488,12 @@ func (db *DB) setActiveDataFile() error {
 }
 
 // 从磁盘中加载数据文件
-func (db *DB) loadDataFiles() error {
+func (db *DB) loadDataFiles() ([]int, error) {
 	dirEntries, err := os.ReadDir(db.options.DirPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var fileIds []int
+	fileIds := make([]int, 0, len(dirEntries))
 	// 遍历目录, 筛取数据文件
 	for _, entry := range dirEntries {
 		if !strings.HasSuffix(entry.Name(), data.DataFileNameSuffix) {
@@ -504,19 +504,17 @@ func (db *DB) loadDataFiles() error {
 		fileId, err := strconv.Atoi(splitNames[0])
 		// 文件名称不合法
 		if err != nil {
-			return ErrDataDirectoryCorrupted
+			return nil, ErrDataDirectoryCorrupted
 		}
 		fileIds = append(fileIds, fileId)
 	}
-
-	db.fileIds = fileIds
 
 	// 按文件 id 从小到大加载, 保证最终得到最新数据
 	// 由于 ReadDir 方法底层已按文件名进行排序, 按顺序遍历得到的文件 id 已有序
 	for i, fid := range fileIds {
 		dataFile, err := data.OpenDataFile(db.options.DirPath, uint32(fid), db.options.FileIOType)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// id 最大的文件视为最新文件, 作为活跃文件
 		if i == len(fileIds)-1 {
@@ -526,13 +524,13 @@ func (db *DB) loadDataFiles() error {
 		}
 	}
 
-	return nil
+	return fileIds, nil
 }
 
 // 从数据文件中加载索引
-func (db *DB) loadIndexFromDataFiles(nonMergeFileId uint32) error {
+func (db *DB) loadIndexFromDataFiles(fileIds []int, nonMergeFileId uint32) error {
 	// 数据库为空
-	if len(db.fileIds) == 0 {
+	if len(fileIds) == 0 {
 		return nil
 	}
 
@@ -557,7 +555,7 @@ func (db *DB) loadIndexFromDataFiles(nonMergeFileId uint32) error {
 	var currentSeqNo uint64 = nonTransactionSeqNo
 
 	// 从小到大遍历数据文件 id 顺序更新索引, 保证最终索引记录最新数据信息
-	for i, fid := range db.fileIds {
+	for i, fid := range fileIds {
 		var fileId = uint32(fid)
 		// 已通过 hint 文件加载, 无需重复加载
 		if fileId < nonMergeFileId {
@@ -623,7 +621,7 @@ func (db *DB) loadIndexFromDataFiles(nonMergeFileId uint32) error {
 		}
 
 		// 当前为活跃文件时需更新文件实例的 WriteOff, 供之后追加写入
-		if i == len(db.fileIds)-1 {
+		if i == len(fileIds)-1 {
 			db.activeFile.WriteOff = offset
 		}
 	}
