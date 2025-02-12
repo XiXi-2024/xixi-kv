@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	bitcask "github.com/XiXi-2024/xixi-bitcask-kv"
-	bitcask_datatype "github.com/XiXi-2024/xixi-bitcask-kv/datatype"
-	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
+	bitcask "github.com/XiXi-2024/xixi-kv"
+	bitcask_datatype "github.com/XiXi-2024/xixi-kv/datatype"
+	"github.com/XiXi-2024/xixi-kv/utils"
 	"github.com/tidwall/redcon"
 	"strings"
 )

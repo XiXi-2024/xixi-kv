@@ -1,4 +1,4 @@
-package xixi_bitcask_kv
+package xixi_kv
 
 import (
 	"errors"

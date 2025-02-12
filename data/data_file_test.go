@@ -1,7 +1,7 @@
 package data
 
 import (
-	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
+	"github.com/XiXi-2024/xixi-kv/fio"
 	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"

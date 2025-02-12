@@ -1,9 +1,9 @@
-package xixi_bitcask_kv
+package xixi_kv
 
 import (
 	"encoding/binary"
-	"github.com/XiXi-2024/xixi-bitcask-kv/data"
-	"github.com/XiXi-2024/xixi-bitcask-kv/index"
+	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/index"
 	"sync"
 	"sync/atomic"
 )

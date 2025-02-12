@@ -3,8 +3,8 @@ package datatype
 import (
 	"encoding/binary"
 	"errors"
-	bitcask "github.com/XiXi-2024/xixi-bitcask-kv"
-	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
+	bitcask "github.com/XiXi-2024/xixi-kv"
+	"github.com/XiXi-2024/xixi-kv/utils"
 	"time"
 )
 

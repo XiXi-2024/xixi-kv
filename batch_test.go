@@ -1,7 +1,7 @@
-package xixi_bitcask_kv
+package xixi_kv
 
 import (
-	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
+	"github.com/XiXi-2024/xixi-kv/utils"
 	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"

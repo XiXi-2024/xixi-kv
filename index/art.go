@@ -2,7 +2,7 @@ package index
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-kv/data"
 	goart "github.com/plar/go-adaptive-radix-tree"
 	"sort"
 	"sync"

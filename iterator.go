@@ -1,8 +1,8 @@
-package xixi_bitcask_kv
+package xixi_kv
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-bitcask-kv/index"
+	"github.com/XiXi-2024/xixi-kv/index"
 )
 
 // Iterator 索引迭代器, 面向用户

@@ -5,7 +5,7 @@
  ██ ██  ██  ██ ██  ██       ██  ██   ██  ██  
 ██   ██ ██ ██   ██ ██       ██   ██   ████                                                
 ```
-![GitHub top language](https://img.shields.io/github/languages/top/XiXi-2024/xixi-bitcask-kv)   [![Go Reference](https://pkg.go.dev/badge/github.com/XiXi-2024/xixi-bitcask-kv)](https://pkg.go.dev/github.com/XiXi-2024/xixi-bitcask-kv)   ![LICENSE](https://img.shields.io/github/license/XiXi-2024/xixi-bitcask-kv)   ![GitHub stars](https://img.shields.io/github/stars/XiXi-2024/xixi-bitcask-kv)   ![GitHub forks](https://img.shields.io/github/forks/XiXi-2024/xixi-bitcask-kv)   [![Go Report Card](https://goreportcard.com/badge/github.com/XiXi-2024/xixi-bitcask-kv)](https://goreportcard.com/report/github.com/XiXi-2024/xixi-bitcask-kv)![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/XiXi-2024/xixi-bitcask-kv)![GitHub contributors](https://img.shields.io/github/contributors/XiXi-2024/xixi-bitcask-kv)
+![GitHub top language](https://img.shields.io/github/languages/top/XiXi-2024/xixi-kv)   [![Go Reference](https://pkg.go.dev/badge/github.com/XiXi-2024/xixi-kv)](https://pkg.go.dev/github.com/XiXi-2024/xixi-kv)   ![LICENSE](https://img.shields.io/github/license/XiXi-2024/xixi-kv)   ![GitHub stars](https://img.shields.io/github/stars/XiXi-2024/xixi-kv)   ![GitHub forks](https://img.shields.io/github/forks/XiXi-2024/xixi-kv)   [![Go Report Card](https://goreportcard.com/badge/github.com/XiXi-2024/xixi-kv)](https://goreportcard.com/report/github.com/XiXi-2024/xixi-kv)![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/XiXi-2024/xixi-kv)![GitHub contributors](https://img.shields.io/github/contributors/XiXi-2024/xixi-kv)
 
 xixi-kv 是基于 Bitcask 模型的轻量级 kv 存储引擎，具备读写低时延、高吞吐、超越内存容量的数据存储能力等核心特性。
 ### 特性
@@ -19,7 +19,7 @@ xixi-kv 是基于 Bitcask 模型的轻量级 kv 存储引擎，具备读写低�
 #### 安装
 安装`Go`并运行`go get`命令
 ```shell
-$ go get -u github.com/XiXi-2024/xixi-bitcask-kv
+$ go get -u github.com/XiXi-2024/xixi-kv
 ```
 #### 打开数据库
 xixi-kv 的核心对象是`DB`，如果需要打开或创建数据库请使用`Open`方法
@@ -27,7 +27,7 @@ xixi-kv 的核心对象是`DB`，如果需要打开或创建数据库请使用`O
 package main
 
 import (
-	kv "github.com/XiXi-2024/xixi-bitcask-kv"
+	kv "github.com/XiXi-2024/xixi-kv"
 	"log"
 )
 

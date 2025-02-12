@@ -2,7 +2,7 @@ package index
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-kv/data"
 	"github.com/huandu/skiplist"
 	"sort"
 	"sync"

@@ -1,4 +1,4 @@
-module github.com/XiXi-2024/xixi-bitcask-kv
+module github.com/XiXi-2024/xixi-kv
 
 go 1.23.4
 

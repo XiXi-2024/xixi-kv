@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	bitcask "github.com/XiXi-2024/xixi-bitcask-kv"
+	bitcask "github.com/XiXi-2024/xixi-kv"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/exp/slog"
 	"net/http"

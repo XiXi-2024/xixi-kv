@@ -1,7 +1,7 @@
 package index
 
 import (
-	"github.com/XiXi-2024/xixi-bitcask-kv/data"
+	"github.com/XiXi-2024/xixi-kv/data"
 	"go.etcd.io/bbolt"
 	"path/filepath"
 )

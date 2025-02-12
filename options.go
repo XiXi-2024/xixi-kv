@@ -1,8 +1,8 @@
-package xixi_bitcask_kv
+package xixi_kv
 
 import (
-	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
-	"github.com/XiXi-2024/xixi-bitcask-kv/index"
+	"github.com/XiXi-2024/xixi-kv/fio"
+	"github.com/XiXi-2024/xixi-kv/index"
 	"os"
 )
 

@@ -1,9 +1,9 @@
-package xixi_bitcask_kv
+package xixi_kv
 
 import (
 	"fmt"
-	"github.com/XiXi-2024/xixi-bitcask-kv/data"
-	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
+	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/utils"
 	"github.com/gofrs/flock"
 	"github.com/stretchr/testify/assert"
 	"os"

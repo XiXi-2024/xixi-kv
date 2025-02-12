@@ -2,7 +2,7 @@ package datatype
 
 import (
 	"encoding/binary"
-	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
+	"github.com/XiXi-2024/xixi-kv/utils"
 	"math"
 )
 

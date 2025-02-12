@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	kv "github.com/XiXi-2024/xixi-bitcask-kv"
+	kv "github.com/XiXi-2024/xixi-kv"
 	"log"
 )
 

@@ -1,13 +1,13 @@
-package xixi_bitcask_kv
+package xixi_kv
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/XiXi-2024/xixi-bitcask-kv/data"
-	"github.com/XiXi-2024/xixi-bitcask-kv/fio"
-	"github.com/XiXi-2024/xixi-bitcask-kv/index"
-	"github.com/XiXi-2024/xixi-bitcask-kv/utils"
+	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/fio"
+	"github.com/XiXi-2024/xixi-kv/index"
+	"github.com/XiXi-2024/xixi-kv/utils"
 	"github.com/gofrs/flock"
 	"io"
 	"os"

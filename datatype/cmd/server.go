@@ -1,8 +1,8 @@
 package main
 
 import (
-	bitcask "github.com/XiXi-2024/xixi-bitcask-kv"
-	bitcask_datatype "github.com/XiXi-2024/xixi-bitcask-kv/datatype"
+	bitcask "github.com/XiXi-2024/xixi-kv"
+	bitcask_datatype "github.com/XiXi-2024/xixi-kv/datatype"
 	"github.com/tidwall/redcon"
 	"log"
 	"sync"
