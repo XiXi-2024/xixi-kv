@@ -1,19 +1,80 @@
-# xixi-bitcask-kv
-[简体中文](README_CN.md)
-
-A lightweight key-value storage engine based on the Bitcask model. It offers low-latency read/write operations, high throughput, and the capability to store data volumes exceeding available memory. Written in Golang.
-
-# Highlights
-- Supports B-Tree, persistent B+ Tree, and adaptive radix tree indexes, allowing you to balance operational efficiency with storage capacity and select the most appropriate indexing scheme for your needs.
-- Ensures transaction atomicity and isolation through a global lock and a database startup identification mechanism.
-- Utilizes a custom log record format with variable-length fields and bespoke encoders/decoders to maximize storage efficiency.
-- Defines unified iterator interfaces at both the index and database layers, enabling ordered traversal and extended operations on log records.
-- Leverages memory-mapped IO (MMap) to speed up index building, improving startup times when the data size is within available memory limits.
-# Known Issues
-On Windows systems, you must explicitly close all open database instances or files before attempting to delete them. Failing to do so may result in errors like:
+```text
+██   ██ ██ ██   ██ ██       ██   ██ ██    ██ 
+ ██ ██  ██  ██ ██  ██       ██  ██  ██    ██ 
+  ███   ██   ███   ██ █████ █████   ██    ██ 
+ ██ ██  ██  ██ ██  ██       ██  ██   ██  ██  
+██   ██ ██ ██   ██ ██       ██   ██   ████                                                
 ```
-The process cannot access the file because it is being used by another process.
+![GitHub top language](https://img.shields.io/github/languages/top/XiXi-2024/xixi-bitcask-kv)   [![Go Reference](https://pkg.go.dev/badge/github.com/XiXi-2024/xixi-bitcask-kv)](https://pkg.go.dev/github.com/XiXi-2024/xixi-bitcask-kv)   ![LICENSE](https://img.shields.io/github/license/XiXi-2024/xixi-bitcask-kv)   ![GitHub stars](https://img.shields.io/github/stars/XiXi-2024/xixi-bitcask-kv)   ![GitHub forks](https://img.shields.io/github/forks/XiXi-2024/xixi-bitcask-kv)   [![Go Report Card](https://goreportcard.com/badge/github.com/XiXi-2024/xixi-bitcask-kv)](https://goreportcard.com/report/github.com/XiXi-2024/xixi-bitcask-kv)![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/XiXi-2024/xixi-bitcask-kv)![GitHub contributors](https://img.shields.io/github/contributors/XiXi-2024/xixi-bitcask-kv)
+
+English | [简体中文](README_CN.md)
+
+xixi-kv is a lightweight key-value storage engine based on the Bitcask model, featuring low-latency read/write operations, high throughput, and the ability to store data volumes exceeding available memory.
+
+### Features
+- Supports multiple index implementations including B-Tree, persistent B+ Tree, and adaptive radix tree, allowing users to balance operational efficiency with storage capacity based on their needs.
+- Implements batch transaction writes with atomicity and isolation through global locking and database startup identification mechanisms.
+- Features a custom log record format with variable-length fields and self-implemented encoders/decoders to optimize storage efficiency.
+- Employs the iterator pattern with unified interfaces at both index and database layers for ordered traversal and extended operations on log records.
+- Utilizes memory-mapped (MMap) IO management to accelerate index building, improving startup speed when data volume is within available memory limits.
+
+### Quick Start
+For a complete example, see: [basic_operation.go](examples/basic_operation.go)
+
+#### Installation
+Install `Go` and run the `go get` command:
+```shell
+$ go get -u github.com/XiXi-2024/xixi-bitcask-kv
 ```
-For a smoother experience, consider running the application on macOS or Linux, or manually delete generated files when testing on Windows.
-# Contributions
-This project is still under development, and contributions are very welcome. Please feel free to submit issues or pull requests—I will respond as quickly as possible!
+
+#### Opening the Database
+The core object in xixi-kv is `DB`. Use the `Open` method to create or open a database:
+```go
+package main
+
+import (
+	kv "github.com/XiXi-2024/xixi-bitcask-kv"
+	"log"
+)
+
+// Usage example
+func main() {
+	// Use default options, default path is system temp directory
+	opts := kv.DefaultOptions
+	db, err := kv.Open(opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	// ...
+}
+```
+
+#### Basic Operations
+```go
+// Put
+err = db.Put(key, value)
+
+// Get
+val, err := db.Get(key)
+
+// Delete
+err = db.Delete(key)
+```
+
+### Single-Thread Benchmark
+MacOS system with default configuration
+
+| Operation | QPS (os.File) | Latency (os.File) | QPS (mmap) | Latency (mmap) |
+|-----------|---------------|------------------|------------|----------------|
+| Put       | 53703         | 27745            | 855710     | 1725          |
+| Get       | 323540        | 3731             | 1767753    | 716.7         |
+| Delete    | 415341        | 2921             | 2121006    | 627.7         |
+
+### Known Issues
+When running on `Windows` systems, ensure all open `DB` instances and files are explicitly closed before deletion. Otherwise, you may encounter errors like `The process cannot access the file because it is being used by another process.`
+
+It is recommended to run on Mac or Linux environments, or manually delete generated files when testing on Windows.
+
+### Contributions
+This project is still under development, and contributions are very welcome! Feel free to submit issues and pull requests—I will respond as quickly as possible!

@@ -2,32 +2,36 @@ package main
 
 import (
 	"fmt"
-	bitcask "github.com/XiXi-2024/xixi-bitcask-kv"
+	kv "github.com/XiXi-2024/xixi-bitcask-kv"
+	"log"
 )
 
 // 使用示例
 func main() {
-	opts := bitcask.DefaultOptions
-	opts.DirPath = "E:\\桌面\\Go\\test"
-	db, err := bitcask.Open(opts)
+	opts := kv.DefaultOptions
+	db, err := kv.Open(opts)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// 新增
+	key, value := []byte("key"), []byte("value")
+	err = db.Put(key, value)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	err = db.Put([]byte("name"), []byte("bitcask"))
+	// 获取
+	val, err := db.Get(key)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+	fmt.Printf("%s\n", val)
 
-	val, err := db.Get([]byte("name"))
+	// 删除
+	err = db.Delete(key)
 	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("val = ", string(val))
-
-	err = db.Delete([]byte("name"))
-	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
