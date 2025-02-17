@@ -82,6 +82,7 @@ func Open(options Options) (*DB, error) {
 	var isInitial bool
 
 	// 数据目录不存在则创建
+	// todo 优化点：去除 os.Stat 判断
 	if _, err := os.Stat(options.DirPath); os.IsNotExist(err) {
 		isInitial = true
 		if err := os.MkdirAll(options.DirPath, os.ModePerm); err != nil {
@@ -379,6 +380,8 @@ func (db *DB) Close() error {
 			return err
 		}
 	}
+	// 辅助 GC
+	db.olderFiles = nil
 
 	return nil
 }

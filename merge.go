@@ -182,6 +182,7 @@ func (db *DB) mergeCheck() error {
 }
 
 // 获取 merge 临时目录路径, 与数据目录同级
+// todo 优化点：重构为独立函数, 方便测试
 func (db *DB) getMergePath() string {
 	// 获取数据目录的父目录路径
 	dir := filepath.Dir(filepath.Clean(db.options.DirPath))
@@ -191,6 +192,7 @@ func (db *DB) getMergePath() string {
 }
 
 // 尝试加载 merge 临时目录
+// todo 优化点：重构为独立函数, 方便测试
 func (db *DB) loadMergeFiles() (uint32, error) {
 	mergePath := db.getMergePath()
 	// 未进行过 merge
@@ -203,6 +205,9 @@ func (db *DB) loadMergeFiles() (uint32, error) {
 		_ = os.RemoveAll(mergePath)
 	}()
 
+	// todo 优化点：重构执行逻辑
+	// 直接省略遍历操作, 打开 merge 完成标识文件
+	// 当 merge 失败时, 返回的 merge id为 0，不会遍历数据文件
 	// 读取目录中所有文件
 	dirEntries, err := os.ReadDir(mergePath)
 	if err != nil {
@@ -240,6 +245,7 @@ func (db *DB) loadMergeFiles() (uint32, error) {
 	}
 
 	// 数据目录中删除参与 merge 的旧数据文件
+	// todo 优化点：一次遍历同时执行删除和移动操作(可提取为临时函数), 后序单独处理hint文件
 	var fileId uint32 = 0
 	for ; fileId < nonMergeFileId; fileId++ {
 		// 获取完整数据文件名称
@@ -265,11 +271,16 @@ func (db *DB) loadMergeFiles() (uint32, error) {
 }
 
 // 获取 merge 完成标识文件中保存的未参与 merge 的最近数据文件id
+// todo 优化点：重构为独立函数, 方便测试
 func (db *DB) getNonMergeFileId() (uint32, error) {
 	mergeFinishedFile, err := data.OpenMergeFinishedFile(db.getMergePath())
 	if err != nil {
+		// todo 优化点：返回nil
+		// 如果打开失败则说明 merge 失败, 返回 nil 即可
 		return 0, err
 	}
+	// todo 优化点：后序重构为wal后, 由于已知仅保存id，直接创建标准文件IO读取即可
+	// todo 优化点：id使用小端序编解码
 	record, _, err := mergeFinishedFile.ReadLogRecord(0)
 	if err != nil {
 		return 0, err
