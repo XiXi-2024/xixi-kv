@@ -2,7 +2,6 @@ package xixi_kv
 
 import (
 	"fmt"
-	"github.com/XiXi-2024/xixi-kv/data"
 	"github.com/XiXi-2024/xixi-kv/utils"
 	"github.com/gofrs/flock"
 	"github.com/stretchr/testify/assert"
@@ -290,11 +289,6 @@ func TestDB_Close(t *testing.T) {
 	ok, err = fileLock.TryLock()
 	assert.Nil(t, err)
 	assert.True(t, ok)
-
-	// 事务序列号文件
-	seqNoFileName := filepath.Join(dir, data.SeqNoFileName)
-	_, err = os.Stat(seqNoFileName)
-	assert.Nil(t, err)
 }
 
 func TestDB_Stat(t *testing.T) {

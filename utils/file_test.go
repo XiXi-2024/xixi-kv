@@ -7,7 +7,7 @@ import (
 )
 
 func TestAvailableDiskSize(t *testing.T) {
-	dir, _ := os.MkdirTemp("", "data")
+	dir, _ := os.MkdirTemp("", "datafile")
 	size, err := AvailableDiskSize(dir)
 	t.Log(size/1024/1024/1024, "G")
 	assert.Nil(t, err)

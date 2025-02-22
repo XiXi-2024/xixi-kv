@@ -9,14 +9,14 @@
 
 English | [简体中文](README_CN.md)
 
-xixi-kv is a lightweight key-value storage engine based on the Bitcask model, featuring low-latency read/write operations, high throughput, and the ability to store data volumes exceeding available memory.
+xixi-kv is a lightweight key-logRecord storage engine based on the Bitcask model, featuring low-latency read/write operations, high throughput, and the ability to store data volumes exceeding available memory.
 
 ### Features
-- Supports multiple index implementations including B-Tree, persistent B+ Tree, and adaptive radix tree, allowing users to balance operational efficiency with storage capacity based on their needs.
+- Supports multiple idx implementations including B-Tree, persistent B+ Tree, and adaptive radix tree, allowing users to balance operational efficiency with storage capacity based on their needs.
 - Implements batch transaction writes with atomicity and isolation through global locking and database startup identification mechanisms.
 - Features a custom log record format with variable-length fields and self-implemented encoders/decoders to optimize storage efficiency.
-- Employs the iterator pattern with unified interfaces at both index and database layers for ordered traversal and extended operations on log records.
-- Utilizes memory-mapped (MMap) IO management to accelerate index building, improving startup speed when data volume is within available memory limits.
+- Employs the iterator pattern with unified interfaces at both idx and database layers for ordered traversal and extended operations on log records.
+- Utilizes memory-mapped (MMap) IO management to accelerate idx building, improving startup speed when data volume is within available memory limits.
 
 ### Quick Start
 For a complete example, see: [basic_operation.go](examples/basic_operation.go)
@@ -53,7 +53,7 @@ func main() {
 #### Basic Operations
 ```go
 // Put
-err = db.Put(key, value)
+err = db.Put(key, logRecord)
 
 // Get
 val, err := db.Get(key)

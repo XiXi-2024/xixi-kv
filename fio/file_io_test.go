@@ -9,7 +9,7 @@ import (
 
 // 创建
 func TestNewFileIOManager(t *testing.T) {
-	path := filepath.Join(os.TempDir(), "a.data")
+	path := filepath.Join(os.TempDir(), "a.datafile")
 	//t.Log(path)
 	fio, err := NewFileIO(path)
 	defer destroyFile(path)
@@ -23,7 +23,7 @@ func TestNewFileIOManager(t *testing.T) {
 
 // 读取
 func TestFileIO_Read(t *testing.T) {
-	path := filepath.Join(os.TempDir(), "a.data")
+	path := filepath.Join(os.TempDir(), "a.datafile")
 	//t.Log(path)
 	fio, err := NewFileIO(path)
 	defer destroyFile(path)
@@ -52,7 +52,7 @@ func TestFileIO_Read(t *testing.T) {
 
 // 写入
 func TestFileIO_Write(t *testing.T) {
-	path := filepath.Join(os.TempDir(), "a.data")
+	path := filepath.Join(os.TempDir(), "a.datafile")
 	//t.Log(path)
 	fio, err := NewFileIO(path)
 	defer destroyFile(path)
@@ -77,7 +77,7 @@ func TestFileIO_Write(t *testing.T) {
 
 // 关闭
 func TestFileIO_Close(t *testing.T) {
-	path := filepath.Join(os.TempDir(), "a.data")
+	path := filepath.Join(os.TempDir(), "a.datafile")
 	//t.Log(path)
 	fio, err := NewFileIO(path)
 	defer destroyFile(path)
@@ -90,7 +90,7 @@ func TestFileIO_Close(t *testing.T) {
 
 // 持久化
 func TestFileIO_Sync(t *testing.T) {
-	path := filepath.Join(os.TempDir(), "a.data")
+	path := filepath.Join(os.TempDir(), "a.datafile")
 	//t.Log(path)
 	fio, err := NewFileIO(path)
 	defer destroyFile(path)

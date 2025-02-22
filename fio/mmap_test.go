@@ -96,7 +96,7 @@ func TestMMap_Close(t *testing.T) {
 	}()
 
 	// 写入数据
-	_, err = mmapIO.Write([]byte("test data"))
+	_, err = mmapIO.Write([]byte("test datafile"))
 	assert.Nil(t, err)
 
 	// 重复关闭
@@ -122,7 +122,7 @@ func TestMMap_Size(t *testing.T) {
 	assert.Equal(t, int64(0), size)
 
 	// 写入数据后检查大小
-	_, err = mmapIO.Write([]byte("test data"))
+	_, err = mmapIO.Write([]byte("test datafile"))
 	assert.Nil(t, err)
 
 	size, err = mmapIO.Size()

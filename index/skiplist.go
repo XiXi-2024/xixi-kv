@@ -2,7 +2,7 @@ package index
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/huandu/skiplist"
 	"sort"
 	"sync"
@@ -20,35 +20,35 @@ func NewSkipList() *SkipListIndex {
 	}
 }
 
-func (s *SkipListIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (s *SkipListIndex) Put(key []byte, pos *datafile.DataPos) *datafile.DataPos {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	oldItem := s.list.Get(key)
-	var oldValue *data.LogRecordPos
+	var oldValue *datafile.DataPos
 	if oldItem != nil {
-		oldValue = oldItem.Value.(*data.LogRecordPos)
+		oldValue = oldItem.Value.(*datafile.DataPos)
 	}
 	s.list.Set(key, pos)
 	return oldValue
 }
 
-func (s *SkipListIndex) Get(key []byte) *data.LogRecordPos {
+func (s *SkipListIndex) Get(key []byte) *datafile.DataPos {
 	s.lock.RLock()
 	oldItem := s.list.Get(key)
 	s.lock.RUnlock()
 	if oldItem == nil {
 		return nil
 	}
-	return oldItem.Value.(*data.LogRecordPos)
+	return oldItem.Value.(*datafile.DataPos)
 }
 
-func (s *SkipListIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (s *SkipListIndex) Delete(key []byte) (*datafile.DataPos, bool) {
 	s.lock.Lock()
 	oldItem := s.list.Remove(key)
-	var oldValue *data.LogRecordPos
+	var oldValue *datafile.DataPos
 	if oldItem != nil {
-		oldValue = oldItem.Value.(*data.LogRecordPos)
+		oldValue = oldItem.Value.(*datafile.DataPos)
 	}
 	s.lock.Unlock()
 	if oldItem == nil {
@@ -85,7 +85,7 @@ func newSkipListIterator(reverse bool, sl *skiplist.SkipList) *SkipListIterator 
 	for i := sl.Front(); i != nil; i = i.Next() {
 		values[idx] = &Item{
 			key: i.Key().([]byte),
-			pos: i.Value.(*data.LogRecordPos),
+			pos: i.Value.(*datafile.DataPos),
 		}
 		if reverse {
 			idx--
@@ -128,7 +128,7 @@ func (s *SkipListIterator) Key() []byte {
 	return s.values[s.curIndex].key
 }
 
-func (s *SkipListIterator) Value() *data.LogRecordPos {
+func (s *SkipListIterator) Value() *datafile.DataPos {
 	return s.values[s.curIndex].pos
 }
 

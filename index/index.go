@@ -2,7 +2,7 @@ package index
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/google/btree"
 )
 
@@ -28,13 +28,13 @@ type Indexer interface {
 	// Put 新增元素
 	// 允许 key 为 nil
 	// 重复添加会覆盖并返回旧值
-	Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
+	Put(key []byte, pos *datafile.DataPos) *datafile.DataPos
 
 	// Get 获取元素
-	Get(key []byte) *data.LogRecordPos
+	Get(key []byte) *datafile.DataPos
 
 	// Delete 删除元素
-	Delete(key []byte) (*data.LogRecordPos, bool)
+	Delete(key []byte) (*datafile.DataPos, bool)
 
 	// Size 获取元素个数
 	Size() int
@@ -54,8 +54,6 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 		return NewBTree()
 	case ART:
 		return NewART()
-	case BPTree:
-		return NewBPlusTree(dirPath, sync)
 	case SkipList:
 		return NewSkipList()
 	case HashMap:
@@ -68,7 +66,7 @@ func NewIndexer(typ IndexType, dirPath string, sync bool) Indexer {
 // Item 通用结点
 type Item struct {
 	key []byte
-	pos *data.LogRecordPos
+	pos *datafile.DataPos
 }
 
 // Less 结点比较器
@@ -94,7 +92,7 @@ type Iterator interface {
 	Key() []byte
 
 	// Value 获取当前游标指向元素的 value
-	Value() *data.LogRecordPos
+	Value() *datafile.DataPos
 
 	// Close 关闭迭代器
 	Close()
