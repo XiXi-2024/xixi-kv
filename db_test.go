@@ -2,6 +2,7 @@ package xixi_kv
 
 import (
 	"fmt"
+	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/XiXi-2024/xixi-kv/utils"
 	"github.com/gofrs/flock"
 	"github.com/stretchr/testify/assert"
@@ -275,7 +276,7 @@ func TestDB_Close(t *testing.T) {
 	assert.Nil(t, err)
 
 	// 文件锁释放
-	fileFlockName := filepath.Join(dir, fileLockName)
+	fileFlockName := filepath.Join(dir, datafile.FileLockSuffix)
 	_, err = os.Stat(fileFlockName)
 	assert.Nil(t, err)
 	fileLock := flock.New(fileFlockName)

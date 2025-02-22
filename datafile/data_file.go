@@ -25,6 +25,7 @@ const (
 	DataFileSuffix          FileSuffix = ".data"
 	HintFileSuffix          FileSuffix = ".hint"
 	MergeFinishedFileSuffix FileSuffix = ".merge-finished"
+	FileLockSuffix          FileSuffix = ".lock"
 )
 
 // DataFile 数据文件
@@ -79,15 +80,18 @@ func GetFileName(dirPath string, id FileID, suffix FileSuffix) string {
 	return filepath.Join(dirPath, fmt.Sprintf("%09d"+suffix, id))
 }
 
-func (df *DataFile) WriteLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.ByteBuffer) (uint32, *DataPos, error) {
+func (df *DataFile) WriteLogRecord(logRecord *LogRecord, header []byte) (*DataPos, error) {
 	if df.closed {
-		return 0, nil, ErrClosed
+		return nil, ErrClosed
 	}
-	data, size := EncodeLogRecord(logRecord, header, buf)
+	buf := bytebufferpool.Get()
+	buf.Reset()
+	defer bytebufferpool.Put(buf)
+	data := EncodeLogRecord(logRecord, header, buf)
 
 	pos, err := df.write(data)
 
-	return size, pos, err
+	return pos, err
 }
 
 func (df *DataFile) WriteHintRecord(key []byte, pos *DataPos) error {
@@ -141,9 +145,9 @@ func (df *DataFile) write(data []byte) (*DataPos, error) {
 		writeSize = totalSize - writtenSize
 		if writtenSize == 0 {
 			// 仅在初始时存在 currBlockSize > 0 的场景
-			writeSize = min(writeSize, blockSize-df.lastBlockSize)
+			writeSize = min(writeSize, blockSize-df.lastBlockSize-chunkHeaderSize)
 		} else {
-			writeSize = min(writeSize, blockSize)
+			writeSize = min(writeSize, blockSize-chunkHeaderSize)
 		}
 		if writtenSize+writeSize == totalSize {
 			// 数据写入完毕
@@ -169,7 +173,6 @@ func (df *DataFile) write(data []byte) (*DataPos, error) {
 		df.headerBuf[6] = chunkType
 		// length
 		binary.LittleEndian.PutUint16(df.headerBuf[4:6], uint16(writeSize))
-		// sum
 		sum := crc32.ChecksumIEEE(df.headerBuf[4:])
 		sum = crc32.Update(sum, crc32.IEEETable, data[writtenSize:writtenSize+writeSize])
 		binary.LittleEndian.PutUint32(df.headerBuf[:4], sum)
@@ -219,6 +222,9 @@ func (df *DataFile) ReadMergeFinRecord() (FileID, error) {
 }
 
 func (df *DataFile) read(blockID uint32, offset uint32) ([]byte, error) {
+	if blockID > df.lastBlockID {
+		return nil, io.EOF
+	}
 	// 获取用于读取 block 的缓冲区
 	block := getBuffer()
 	defer putBuffer(block)
@@ -233,7 +239,7 @@ func (df *DataFile) read(blockID uint32, offset uint32) ([]byte, error) {
 		// 当前 block 实际大小
 		size := uint32(min(fileSize-off, blockSize))
 
-		// 更多是避免初始传入 offset 过大的情况
+		// 更多是初始参数校验
 		if offset >= size {
 			return nil, io.EOF
 		}
@@ -307,12 +313,18 @@ func (reader *DataReader) next() ([]byte, *DataPos, error) {
 		cnt      uint32
 		res      []byte
 	)
+
+	pos := &DataPos{
+		Fid:     reader.dataFile.ID,
+		BlockID: reader.blockID,
+		Offset:  reader.offset,
+	}
+
 	for {
-		size := uint32(blockSize)
-		off := int64(reader.blockID) * blockSize // 绝对偏移量
-		if int64(size)+off > fileSize {
-			size = uint32(fileSize - off)
-		}
+		// 当前 block 绝对偏移量
+		off := int64(reader.blockID) * blockSize
+		// 当前 block 实际大小
+		size := uint32(min(fileSize-off, blockSize))
 
 		if reader.offset >= size {
 			return nil, nil, io.EOF
@@ -331,6 +343,7 @@ func (reader *DataReader) next() ([]byte, *DataPos, error) {
 		}
 		res = append(res, data...)
 		cnt++
+
 		// last chunk
 		if chunkType == Full || chunkType == Last {
 			reader.offset += uint32(chunkHeaderSize + len(data))
@@ -340,16 +353,11 @@ func (reader *DataReader) next() ([]byte, *DataPos, error) {
 			}
 			break
 		}
-		reader.blockID += 1
 		reader.offset = 0
+		reader.blockID += 1
 	}
 
-	pos := &DataPos{
-		Fid:     reader.dataFile.ID,
-		BlockID: reader.blockID,
-		Offset:  reader.offset,
-		Size:    cnt*chunkHeaderSize + uint32(len(res)),
-	}
+	pos.Size = cnt*chunkHeaderSize + uint32(len(res))
 
 	return res, pos, nil
 }

@@ -48,11 +48,11 @@ type WriteBatchOptions struct {
 var DefaultOptions = Options{
 	DirPath:               os.TempDir(),
 	DataFileSize:          512 * 1024 * 1024,
-	SyncStrategy:          Threshold,
+	SyncStrategy:          No,
 	BytesPerSync:          1024 * 1024,
-	EnableBackgroundMerge: true,
-	IndexType:             index.BTree,
-	FileIOType:            fio.StandardFIO,
+	EnableBackgroundMerge: false,
+	IndexType:             index.HashMap,
+	FileIOType:            fio.MemoryMap,
 	DataFileMergeRatio:    0.5,
 }
 

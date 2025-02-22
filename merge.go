@@ -4,7 +4,6 @@ import (
 	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/XiXi-2024/xixi-kv/fio"
 	"github.com/XiXi-2024/xixi-kv/utils"
-	"github.com/valyala/bytebufferpool"
 	"io"
 	"os"
 	"path/filepath"
@@ -80,8 +79,9 @@ func (db *DB) Merge() error {
 	mergeOptions.DirPath = mergePath
 	mergeOptions.SyncStrategy = No // 加快 merge 速度
 	mergeDB := &DB{
-		options:    mergeOptions,
-		olderFiles: make(map[uint32]*datafile.DataFile),
+		options:         mergeOptions,
+		olderFiles:      make(map[uint32]*datafile.DataFile),
+		logRecordHeader: make([]byte, datafile.MaxChunkHeaderSize),
 	}
 
 	// 在 merge 临时目录创建并打开 hint 索引文件
@@ -89,9 +89,6 @@ func (db *DB) Merge() error {
 	if err != nil {
 		return err
 	}
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
 
 	// 执行 merge
 	// 依次读取每个数据文件, 解析得到日志记录并写入新 merge 目录
@@ -222,7 +219,7 @@ func (db *DB) loadMergeFiles() (uint32, error) {
 			mergeFinished = true
 		}
 		// 过滤文件锁文件
-		if entry.Name() == fileLockName {
+		if entry.Name() == datafile.FileLockSuffix {
 			continue
 		}
 		mergeFileNames = append(mergeFileNames, entry.Name())

@@ -19,13 +19,6 @@ import (
 	"time"
 )
 
-const (
-	// 事务序列号文件存放数据 Key
-	seqNoKey = "seq.no"
-	// 文件锁名称
-	fileLockName = "flock"
-)
-
 // DB bitcask存储引擎客户端
 type DB struct {
 	options         Options // 用户配置项
@@ -84,7 +77,7 @@ func Open(options Options) (*DB, error) {
 
 	// 尝试获取文件锁
 	// 通过文件锁确保多进程下同一数据目录的 DB 实例唯一
-	fileLock := flock.New(filepath.Join(options.DirPath, fileLockName))
+	fileLock := flock.New(filepath.Join(options.DirPath, datafile.FileLockSuffix))
 	hold, err := fileLock.TryLock()
 	if err != nil {
 		return nil, err
@@ -163,7 +156,7 @@ func (db *DB) Backup(dir string) error {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 	// 将数据目录中的数据文件拷贝到指定目录中
-	return utils.CopyDir(db.options.DirPath, dir, []string{fileLockName})
+	return utils.CopyDir(db.options.DirPath, dir, []string{datafile.FileLockSuffix})
 }
 
 // Put 新增元素
@@ -368,17 +361,14 @@ func (db *DB) appendLogRecord(logRecord *datafile.LogRecord) (*datafile.DataPos,
 		}
 	}
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	size, pos, err := db.activeFile.WriteLogRecord(logRecord, db.logRecordHeader, buf)
+	pos, err := db.activeFile.WriteLogRecord(logRecord, db.logRecordHeader)
 	if err != nil {
 		return nil, err
 	}
 	// 维护总数据量
-	db.totalSize += int64(size)
+	db.totalSize += int64(pos.Size)
 	// 维护累计写入数据量
-	db.bytesWrite += uint(size)
+	db.bytesWrite += uint(pos.Size)
 
 	// 执行配置的持久化策略
 	syncStrategy := db.options.SyncStrategy

@@ -68,7 +68,7 @@ type TransactionRecords struct {
 
 // EncodeLogRecord 对 LogRecord 实例编码
 // 返回编码后包含完日志记录的字节数组和数组长度
-func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.ByteBuffer) ([]byte, uint32) {
+func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.ByteBuffer) []byte {
 	header[0] = logRecord.Type
 	idx := 1
 	// key size
@@ -78,7 +78,7 @@ func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.By
 	_, _ = buf.Write(header[:idx])
 	_, _ = buf.Write(logRecord.Key)
 	_, _ = buf.Write(logRecord.Value)
-	return buf.Bytes(), uint32(buf.Len())
+	return buf.Bytes()
 }
 
 func DecodeLogRecord(data []byte) *LogRecord {
@@ -159,7 +159,6 @@ func DecodeChunk(block []byte) ([]byte, ChunkType, error) {
 	// length
 	length := binary.LittleEndian.Uint16(block[4:6])
 	start, end := chunkHeaderSize, chunkHeaderSize+uint32(length)
-	// check sum
 	checksum := crc32.ChecksumIEEE(block[4:end])
 	savedSum := binary.LittleEndian.Uint32(block[:4])
 	if savedSum != checksum {
