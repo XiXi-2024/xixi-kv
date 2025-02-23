@@ -11,8 +11,8 @@ require (
 	github.com/plar/go-adaptive-radix-tree v1.0.6
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/redcon v1.6.2
-	go.etcd.io/bbolt v1.3.11
-	golang.org/x/exp v0.0.0-20250207012021-f9890c6ad9f3
+	github.com/valyala/bytebufferpool v1.0.0
+	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa
 )
 
 require (

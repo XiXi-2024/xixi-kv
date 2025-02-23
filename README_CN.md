@@ -46,7 +46,7 @@ func main() {
 #### 基础操作
 ```go
 // 新增
-err = db.Put(key, value)
+err = db.Put(key, logRecord)
 
 // 获取
 val, err := db.Get(key)

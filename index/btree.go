@@ -2,7 +2,7 @@ package index
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/google/btree"
 	"sort"
 	"sync"
@@ -25,7 +25,7 @@ func NewBTree() *BTreeIndex {
 	}
 }
 
-func (bt *BTreeIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (bt *BTreeIndex) Put(key []byte, pos *datafile.DataPos) *datafile.DataPos {
 	it := &Item{key: key, pos: pos}
 	bt.lock.Lock()
 	oldItem := bt.tree.ReplaceOrInsert(it)
@@ -36,7 +36,7 @@ func (bt *BTreeIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
 	return oldItem.(*Item).pos
 }
 
-func (bt *BTreeIndex) Get(key []byte) *data.LogRecordPos {
+func (bt *BTreeIndex) Get(key []byte) *datafile.DataPos {
 	bt.lock.RLock()
 	defer bt.lock.RUnlock()
 	it := &Item{key: key}
@@ -47,7 +47,7 @@ func (bt *BTreeIndex) Get(key []byte) *data.LogRecordPos {
 	return btreeItem.(*Item).pos
 }
 
-func (bt *BTreeIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (bt *BTreeIndex) Delete(key []byte) (*datafile.DataPos, bool) {
 	it := &Item{key: key}
 	bt.lock.Lock()
 	oldItem := bt.tree.Delete(it)
@@ -140,7 +140,7 @@ func (bti *btreeIterator) Key() []byte {
 	return bti.values[bti.curIndex].key
 }
 
-func (bti *btreeIterator) Value() *data.LogRecordPos {
+func (bti *btreeIterator) Value() *datafile.DataPos {
 	return bti.values[bti.curIndex].pos
 }
 

@@ -2,25 +2,25 @@ package index
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/datafile"
 	"slices"
 	"sort"
 	"sync"
 )
 
 type HashMapIndex struct {
-	mp   map[string]*data.LogRecordPos
+	mp   map[string]*datafile.DataPos
 	lock *sync.RWMutex
 }
 
 func NewMap() *HashMapIndex {
 	return &HashMapIndex{
-		mp:   map[string]*data.LogRecordPos{},
+		mp:   map[string]*datafile.DataPos{},
 		lock: &sync.RWMutex{},
 	}
 }
 
-func (m *HashMapIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (m *HashMapIndex) Put(key []byte, pos *datafile.DataPos) *datafile.DataPos {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -29,7 +29,7 @@ func (m *HashMapIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPo
 	return oldPos
 }
 
-func (m *HashMapIndex) Get(key []byte) *data.LogRecordPos {
+func (m *HashMapIndex) Get(key []byte) *datafile.DataPos {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
@@ -37,7 +37,7 @@ func (m *HashMapIndex) Get(key []byte) *data.LogRecordPos {
 	return oldPos
 }
 
-func (m *HashMapIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (m *HashMapIndex) Delete(key []byte) (*datafile.DataPos, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -122,7 +122,7 @@ func (m *mapIterator) Key() []byte {
 	return m.values[m.curIndex].key
 }
 
-func (m *mapIterator) Value() *data.LogRecordPos {
+func (m *mapIterator) Value() *datafile.DataPos {
 	return m.values[m.curIndex].pos
 }
 

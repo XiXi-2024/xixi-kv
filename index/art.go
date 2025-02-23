@@ -2,7 +2,7 @@ package index
 
 import (
 	"bytes"
-	"github.com/XiXi-2024/xixi-kv/data"
+	"github.com/XiXi-2024/xixi-kv/datafile"
 	goart "github.com/plar/go-adaptive-radix-tree"
 	"sort"
 	"sync"
@@ -23,34 +23,34 @@ func NewART() *AdaptiveRadixTreeIndex {
 	}
 }
 
-func (art *AdaptiveRadixTreeIndex) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
+func (art *AdaptiveRadixTreeIndex) Put(key []byte, pos *datafile.DataPos) *datafile.DataPos {
 	art.lock.Lock()
 	oldValue, _ := art.tree.Insert(key, pos)
 	art.lock.Unlock()
 	if oldValue == nil {
 		return nil
 	}
-	return oldValue.(*data.LogRecordPos)
+	return oldValue.(*datafile.DataPos)
 }
 
-func (art *AdaptiveRadixTreeIndex) Get(key []byte) *data.LogRecordPos {
+func (art *AdaptiveRadixTreeIndex) Get(key []byte) *datafile.DataPos {
 	art.lock.RLock()
 	defer art.lock.RUnlock()
 	value, found := art.tree.Search(key)
 	if !found {
 		return nil
 	}
-	return value.(*data.LogRecordPos)
+	return value.(*datafile.DataPos)
 }
 
-func (art *AdaptiveRadixTreeIndex) Delete(key []byte) (*data.LogRecordPos, bool) {
+func (art *AdaptiveRadixTreeIndex) Delete(key []byte) (*datafile.DataPos, bool) {
 	art.lock.Lock()
 	oldValue, deleted := art.tree.Delete(key)
 	art.lock.Unlock()
 	if oldValue == nil {
 		return nil, false
 	}
-	return oldValue.(*data.LogRecordPos), deleted
+	return oldValue.(*datafile.DataPos), deleted
 }
 
 func (art *AdaptiveRadixTreeIndex) Size() int {
@@ -90,7 +90,7 @@ func newARTIterator(tree goart.Tree, reverse bool) *artIterator {
 	saveValues := func(node goart.Node) bool {
 		item := &Item{
 			key: node.Key(),
-			pos: node.Value().(*data.LogRecordPos),
+			pos: node.Value().(*datafile.DataPos),
 		}
 		values[idx] = item
 		// 根据配置项进行升序或降序遍历
@@ -140,7 +140,7 @@ func (ai *artIterator) Key() []byte {
 	return ai.values[ai.curIndex].key
 }
 
-func (ai *artIterator) Value() *data.LogRecordPos {
+func (ai *artIterator) Value() *datafile.DataPos {
 	return ai.values[ai.curIndex].pos
 }
 

@@ -2,8 +2,7 @@ package xixi_kv
 
 import (
 	"encoding/binary"
-	"github.com/XiXi-2024/xixi-kv/data"
-	"github.com/XiXi-2024/xixi-kv/index"
+	"github.com/XiXi-2024/xixi-kv/datafile"
 	"sync"
 	"sync/atomic"
 )
@@ -21,21 +20,16 @@ type WriteBatch struct {
 	options       WriteBatchOptions
 	mu            *sync.Mutex
 	db            *DB
-	pendingWrites map[string]*data.LogRecord // 暂存数据
+	pendingWrites map[string]*datafile.LogRecord // 暂存数据
 }
 
 // NewWriteBatch 创建新 WriteBatch 实例
 func (db *DB) NewWriteBatch(opts WriteBatchOptions) *WriteBatch {
-	// 如果选择 B+ 树索引实现、事务序列号未加载、非首次加载数据目录, 则禁用事务提交功能
-	// 首次加载时事务序列号为 0, 但无法加载得到, 故进行特殊判断
-	if db.options.IndexType == index.BPTree && !db.seqNoFileExists && !db.isInitial {
-		panic("cannot use write batch, seq no file not exists")
-	}
 	return &WriteBatch{
 		options:       opts,
 		mu:            new(sync.Mutex),
 		db:            db,
-		pendingWrites: make(map[string]*data.LogRecord),
+		pendingWrites: make(map[string]*datafile.LogRecord),
 	}
 }
 
@@ -48,7 +42,7 @@ func (wb *WriteBatch) Put(key, value []byte) error {
 	defer wb.mu.Unlock()
 
 	// 仅暂存
-	logRecord := &data.LogRecord{Key: key, Value: value}
+	logRecord := &datafile.LogRecord{Key: key, Value: value}
 	wb.pendingWrites[string(key)] = logRecord
 	return nil
 }
@@ -73,7 +67,7 @@ func (wb *WriteBatch) Delete(key []byte) error {
 	}
 
 	// 待删除元素已持久化, 追加墓碑值
-	logRecord := &data.LogRecord{Key: key, Type: data.LogRecordDeleted}
+	logRecord := &datafile.LogRecord{Key: key, Type: datafile.LogRecordDeleted}
 	wb.pendingWrites[string(key)] = logRecord
 	return nil
 }
@@ -104,10 +98,10 @@ func (wb *WriteBatch) Commit() error {
 
 	// 遍历当前事务客户端的写入缓存, 依次进行写入
 	// 由于缓存包含最新数据, 故允许无序遍历
-	positions := make(map[string]*data.LogRecordPos)
+	positions := make(map[string]*datafile.DataPos)
 	for _, record := range wb.pendingWrites {
 		// 无需重复加锁, 使用不加锁的 appendLogRecord 方法
-		logRecordPos, err := wb.db.appendLogRecord(&data.LogRecord{
+		logRecordPos, err := wb.db.appendLogRecord(&datafile.LogRecord{
 			// 将 key 和 seqNo 进行合并, 节省空间
 			Key:   logRecordKeyWithSeq(record.Key, seqNo),
 			Value: record.Value,
@@ -123,9 +117,9 @@ func (wb *WriteBatch) Commit() error {
 	}
 
 	// 事务成功, 追加带事务完成标识的日志记录
-	finishedRecord := &data.LogRecord{
+	finishedRecord := &datafile.LogRecord{
 		Key:  logRecordKeyWithSeq(txnFinKey, seqNo),
-		Type: data.LogRecordTxnFinished,
+		Type: datafile.LogRecordTxnFinished,
 	}
 	if _, err := wb.db.appendLogRecord(finishedRecord); err != nil {
 		return err
@@ -141,13 +135,13 @@ func (wb *WriteBatch) Commit() error {
 	// 数据持久化完成 更新内存索引
 	for _, record := range wb.pendingWrites {
 		pos := positions[string(record.Key)]
-		var oldPos *data.LogRecordPos
-		if record.Type == data.LogRecordNormal {
+		var oldPos *datafile.DataPos
+		if record.Type == datafile.LogRecordNormal {
 			oldPos = wb.db.index.Put(record.Key, pos)
 		}
 		// 追加形式, 遇到删除状态的日志记录同样更新索引
 		// todo bug：未统计 pos 本身的字节数
-		if record.Type == data.LogRecordDeleted {
+		if record.Type == datafile.LogRecordDeleted {
 			oldPos, _ = wb.db.index.Delete(record.Key)
 		}
 		if oldPos != nil {
@@ -156,7 +150,7 @@ func (wb *WriteBatch) Commit() error {
 	}
 
 	// 清空暂存数据
-	wb.pendingWrites = make(map[string]*data.LogRecord)
+	wb.pendingWrites = make(map[string]*datafile.LogRecord)
 
 	return nil
 }
