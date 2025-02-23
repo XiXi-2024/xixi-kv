@@ -1,10 +1,4 @@
-```text
-██   ██ ██ ██   ██ ██       ██   ██ ██    ██ 
- ██ ██  ██  ██ ██  ██       ██  ██  ██    ██ 
-  ███   ██   ███   ██ █████ █████   ██    ██ 
- ██ ██  ██  ██ ██  ██       ██  ██   ██  ██  
-██   ██ ██ ██   ██ ██       ██   ██   ████                                                
-```
+![xixi-kv-logo.jpg](./assets/images/xixi-kv-logo.jpg)\
 ![GitHub top language](https://img.shields.io/github/languages/top/XiXi-2024/xixi-kv)   [![Go Reference](https://pkg.go.dev/badge/github.com/XiXi-2024/xixi-kv)](https://pkg.go.dev/github.com/XiXi-2024/xixi-kv)   ![LICENSE](https://img.shields.io/github/license/XiXi-2024/xixi-kv)   ![GitHub stars](https://img.shields.io/github/stars/XiXi-2024/xixi-kv)   ![GitHub forks](https://img.shields.io/github/forks/XiXi-2024/xixi-kv)   [![Go Report Card](https://goreportcard.com/badge/github.com/XiXi-2024/xixi-kv)](https://goreportcard.com/report/github.com/XiXi-2024/xixi-kv)![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/XiXi-2024/xixi-kv)![GitHub contributors](https://img.shields.io/github/contributors/XiXi-2024/xixi-kv)
 
 English | [简体中文](README_CN.md)
