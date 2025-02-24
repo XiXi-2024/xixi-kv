@@ -25,7 +25,7 @@ type DB struct {
 	mu              *sync.RWMutex
 	activeFile      *datafile.DataFile            // 当前活跃文件, 允许读写
 	olderFiles      map[uint32]*datafile.DataFile // 旧数据文件, 只读
-	index           index.Indexer                 // 内存索引
+	index           *index.ShardedIndex           // 分片索引
 	seqNo           uint64                        // 事务id
 	isMerging       bool                          // merge 执行状态标识
 	logRecordHeader []byte                        // LogRecord 头部复用缓冲区
@@ -39,7 +39,7 @@ type DB struct {
 // Stat 实时统计信息
 // todo 扩展点：后续进行维护和利用
 type Stat struct {
-	KeyNum          uint  // 当前 key 的数量
+	KeyNum          int   // 当前 key 的数量
 	DataFileNum     uint  // 当前数据文件数量
 	ReclaimableSize int64 // 当前 merge 可回收的数据量, 单位字节
 	DiskSize        int64 // 数据目录的磁盘占用空间大小
@@ -56,7 +56,7 @@ func (db *DB) Stat() *Stat {
 	}
 
 	return &Stat{
-		KeyNum:          uint(db.index.Size()),
+		KeyNum:          db.index.Size(),
 		DataFileNum:     dataFileCount,
 		ReclaimableSize: db.reclaimSize,
 		DiskSize:        db.totalSize,
@@ -86,13 +86,12 @@ func Open(options Options) (*DB, error) {
 		return nil, ErrDatabaseIsUsing
 	}
 
-	syncWrites := options.SyncStrategy == Always
 	// 初始化 DB 实例
 	db := &DB{
 		options:         options,
 		mu:              new(sync.RWMutex),
 		olderFiles:      make(map[uint32]*datafile.DataFile),
-		index:           index.NewIndexer(options.IndexType, options.DirPath, syncWrites),
+		index:           index.NewShardedIndex(options.IndexType, options.ShardNum),
 		logRecordHeader: make([]byte, datafile.MaxChunkHeaderSize),
 		fileLock:        fileLock,
 		closedChan:      make(chan struct{}),

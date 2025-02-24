@@ -26,6 +26,7 @@ type Options struct {
 	FileIOType            fio.FileIOType  // 文件 IO 类型
 	EnableBackgroundMerge bool            // 是否启用后台定时 merge
 	DataFileMergeRatio    float32         // 执行 merge 的无效数据占比阈值
+	ShardNum              int             // 索引分片数量
 }
 
 // IteratorOptions 索引迭代器配置项
@@ -52,6 +53,7 @@ var DefaultOptions = Options{
 	BytesPerSync:          1024 * 1024,
 	EnableBackgroundMerge: false,
 	IndexType:             index.HashMap,
+	ShardNum:              16,
 	FileIOType:            fio.MemoryMap,
 	DataFileMergeRatio:    0.5,
 }

@@ -3,12 +3,12 @@ module github.com/XiXi-2024/xixi-kv
 go 1.23.4
 
 require (
+	github.com/cespare/xxhash v1.1.0
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/gofrs/flock v0.12.1
 	github.com/google/btree v1.1.3
 	github.com/huandu/skiplist v1.2.1
-	github.com/plar/go-adaptive-radix-tree v1.0.6
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/redcon v1.6.2
 	github.com/valyala/bytebufferpool v1.0.0

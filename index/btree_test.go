@@ -7,100 +7,100 @@ import (
 )
 
 // 添加
-func TestBTree_Put(t *testing.T) {
-	bt := NewBTree()
+func TestBTree_put(t *testing.T) {
+	bt := newBTree()
 
 	// 添加 key 为 nil 的元素
-	res1 := bt.Put(nil, &datafile.DataPos{Fid: 1, Offset: 100})
+	res1 := bt.put(nil, &datafile.DataPos{Fid: 1, Offset: 100})
 	assert.Nil(t, res1)
 
 	// 添加正常元素
-	res2 := bt.Put([]byte("a"), &datafile.DataPos{Fid: 1, Offset: 2})
+	res2 := bt.put([]byte("a"), &datafile.DataPos{Fid: 1, Offset: 2})
 	assert.Nil(t, res2)
 
 	// 添加 key 重复元素
-	res3 := bt.Put([]byte("a"), &datafile.DataPos{Fid: 11, Offset: 12})
+	res3 := bt.put([]byte("a"), &datafile.DataPos{Fid: 11, Offset: 12})
 	assert.Equal(t, res3.Fid, uint32(1))
-	assert.Equal(t, res3.Offset, int64(2))
+	assert.Equal(t, res3.Offset, uint32(2))
 }
 
 // 查询
-func TestBTree_Get(t *testing.T) {
-	bt := NewBTree()
+func TestBTree_get(t *testing.T) {
+	bt := newBTree()
 
-	res1 := bt.Put(nil, &datafile.DataPos{Fid: 1, Offset: 100})
+	res1 := bt.put(nil, &datafile.DataPos{Fid: 1, Offset: 100})
 	assert.Nil(t, res1)
 
 	// 查询 key 为 nil 的元素
-	pos1 := bt.Get(nil)
+	pos1 := bt.get(nil)
 	assert.Equal(t, uint32(1), pos1.Fid)
-	assert.Equal(t, int64(100), pos1.Offset)
+	assert.Equal(t, uint32(100), pos1.Offset)
 
-	res2 := bt.Put([]byte("a"), &datafile.DataPos{Fid: 1, Offset: 2})
+	res2 := bt.put([]byte("a"), &datafile.DataPos{Fid: 1, Offset: 2})
 	assert.Nil(t, res2)
-	res3 := bt.Put([]byte("a"), &datafile.DataPos{Fid: 1, Offset: 3})
+	res3 := bt.put([]byte("a"), &datafile.DataPos{Fid: 1, Offset: 3})
 	assert.Equal(t, res3.Fid, uint32(1))
-	assert.Equal(t, res3.Offset, int64(2))
+	assert.Equal(t, res3.Offset, uint32(2))
 
 	// 查询重复添加的元素
-	pos2 := bt.Get([]byte("a"))
+	pos2 := bt.get([]byte("a"))
 	assert.Equal(t, uint32(1), pos2.Fid)
-	assert.Equal(t, int64(3), pos2.Offset)
+	assert.Equal(t, uint32(3), pos2.Offset)
 }
 
-func TestBTree_Delete(t *testing.T) {
-	bt := NewBTree()
-	res1 := bt.Put(nil, &datafile.DataPos{Fid: 1, Offset: 100})
+func TestBTree_delete(t *testing.T) {
+	bt := newBTree()
+	res1 := bt.put(nil, &datafile.DataPos{Fid: 1, Offset: 100})
 	assert.Nil(t, res1)
 	// 删除 key 为 nil 的元素
-	res2, ok1 := bt.Delete(nil)
+	res2, ok1 := bt.delete(nil)
 	assert.True(t, ok1)
 	assert.Equal(t, res2.Fid, uint32(1))
-	assert.Equal(t, res2.Offset, int64(100))
+	assert.Equal(t, res2.Offset, uint32(100))
 
-	res3 := bt.Put([]byte("aaa"), &datafile.DataPos{Fid: 22, Offset: 33})
+	res3 := bt.put([]byte("aaa"), &datafile.DataPos{Fid: 22, Offset: 33})
 	assert.Nil(t, res3)
 	// 删除正常元素
-	res4, ok2 := bt.Delete([]byte("aaa"))
+	res4, ok2 := bt.delete([]byte("aaa"))
 	assert.True(t, ok2)
 	assert.Equal(t, res4.Fid, uint32(22))
-	assert.Equal(t, res4.Offset, int64(33))
+	assert.Equal(t, res4.Offset, uint32(33))
 }
 
-func TestBTree_Iterator(t *testing.T) {
-	bt1 := NewBTree()
-	// BTreeIndex 为空
-	iter1 := bt1.Iterator(false)
-	assert.Equal(t, false, iter1.Valid())
+func TestBTree_iterator(t *testing.T) {
+	bt1 := newBTree()
+	// btreeIndex 为空
+	iter1 := bt1.iterator(false)
+	assert.Equal(t, false, iter1.valid())
 
-	// BTreeIndex 非空
-	bt1.Put([]byte("code"), &datafile.DataPos{Fid: 1, Offset: 10})
-	iter2 := bt1.Iterator(false)
-	assert.Equal(t, true, iter2.Valid())
-	assert.NotNil(t, iter2.Key())
-	assert.NotNil(t, iter2.Value())
-	iter2.Next()
-	assert.Equal(t, false, iter2.Valid())
+	// btreeIndex 非空
+	bt1.put([]byte("code"), &datafile.DataPos{Fid: 1, Offset: 10})
+	iter2 := bt1.iterator(false)
+	assert.Equal(t, true, iter2.valid())
+	assert.NotNil(t, iter2.key())
+	assert.NotNil(t, iter2.value())
+	iter2.next()
+	assert.Equal(t, false, iter2.valid())
 
-	bt1.Put([]byte("acee"), &datafile.DataPos{Fid: 1, Offset: 10})
-	bt1.Put([]byte("eede"), &datafile.DataPos{Fid: 1, Offset: 10})
-	bt1.Put([]byte("bbcd"), &datafile.DataPos{Fid: 1, Offset: 10})
+	bt1.put([]byte("acee"), &datafile.DataPos{Fid: 1, Offset: 10})
+	bt1.put([]byte("eede"), &datafile.DataPos{Fid: 1, Offset: 10})
+	bt1.put([]byte("bbcd"), &datafile.DataPos{Fid: 1, Offset: 10})
 
 	// 升序遍历
-	iter3 := bt1.Iterator(false)
-	for iter3.Rewind(); iter3.Valid(); iter3.Next() {
-		assert.NotNil(t, iter3.Key())
+	iter3 := bt1.iterator(false)
+	for iter3.rewind(); iter3.valid(); iter3.next() {
+		assert.NotNil(t, iter3.key())
 	}
 
 	// 逆序遍历
-	iter4 := bt1.Iterator(true)
-	for iter4.Rewind(); iter4.Valid(); iter4.Next() {
-		assert.NotNil(t, iter4.Key())
+	iter4 := bt1.iterator(true)
+	for iter4.rewind(); iter4.valid(); iter4.next() {
+		assert.NotNil(t, iter4.key())
 	}
 
 	// Seek
-	iter5 := bt1.Iterator(false)
-	for iter5.Seek([]byte("cc")); iter5.Valid(); iter5.Next() {
-		assert.NotNil(t, iter5.Key())
+	iter5 := bt1.iterator(false)
+	for iter5.seek([]byte("cc")); iter5.valid(); iter5.next() {
+		assert.NotNil(t, iter5.key())
 	}
 }

@@ -5,25 +5,22 @@ import (
 	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/huandu/skiplist"
 	"sort"
-	"sync"
 )
 
-type SkipListIndex struct {
+type skipListIndex struct {
 	list *skiplist.SkipList
-	lock *sync.RWMutex
 }
 
-func NewSkipList() *SkipListIndex {
-	return &SkipListIndex{
+func newSkipList() *skipListIndex {
+	return &skipListIndex{
 		list: skiplist.New(skiplist.Bytes),
-		lock: &sync.RWMutex{},
 	}
 }
 
-func (s *SkipListIndex) Put(key []byte, pos *datafile.DataPos) *datafile.DataPos {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
+func (s *skipListIndex) put(key []byte, pos *datafile.DataPos) *datafile.DataPos {
+	if s.list == nil {
+		return nil
+	}
 	oldItem := s.list.Get(key)
 	var oldValue *datafile.DataPos
 	if oldItem != nil {
@@ -33,57 +30,68 @@ func (s *SkipListIndex) Put(key []byte, pos *datafile.DataPos) *datafile.DataPos
 	return oldValue
 }
 
-func (s *SkipListIndex) Get(key []byte) *datafile.DataPos {
-	s.lock.RLock()
+func (s *skipListIndex) get(key []byte) *datafile.DataPos {
+	if s.list == nil {
+		return nil
+	}
 	oldItem := s.list.Get(key)
-	s.lock.RUnlock()
 	if oldItem == nil {
 		return nil
 	}
 	return oldItem.Value.(*datafile.DataPos)
 }
 
-func (s *SkipListIndex) Delete(key []byte) (*datafile.DataPos, bool) {
-	s.lock.Lock()
+func (s *skipListIndex) delete(key []byte) (*datafile.DataPos, bool) {
+	if s.list == nil {
+		return nil, false
+	}
 	oldItem := s.list.Remove(key)
 	var oldValue *datafile.DataPos
 	if oldItem != nil {
 		oldValue = oldItem.Value.(*datafile.DataPos)
 	}
-	s.lock.Unlock()
 	if oldItem == nil {
 		return oldValue, false
 	}
 	return oldValue, true
 }
 
-func (s *SkipListIndex) Size() int {
+func (s *skipListIndex) size() int {
+	if s.list == nil {
+		return 0
+	}
 	return s.list.Len()
 }
 
-func (s *SkipListIndex) Iterator(reverse bool) Iterator {
+func (s *skipListIndex) iterator(reverse bool) iterator {
 	return newSkipListIterator(reverse, s.list)
 }
 
-func (s *SkipListIndex) Close() error {
+func (s *skipListIndex) close() error {
+	s.list = nil
 	return nil
 }
 
-type SkipListIterator struct {
+type skipListIterator struct {
 	reverse bool // 是否降序遍历 todo 扩展点：转换为配置项成员
 	// todo 优化点：采取效率更高的迭代方式
 	curIndex int     // 当前遍历的下标位置
-	values   []*Item // 类型复用, 存放 key + 位置索引信息
+	values   []*item // 类型复用, 存放 key + 位置索引信息
 }
 
-func newSkipListIterator(reverse bool, sl *skiplist.SkipList) *SkipListIterator {
-	values := make([]*Item, sl.Len())
-	var idx int = 0
+func newSkipListIterator(reverse bool, sl *skiplist.SkipList) *skipListIterator {
+	if sl == nil {
+		return &skipListIterator{
+			values: make([]*item, 0),
+		}
+	}
+	values := make([]*item, sl.Len())
+	idx := 0
 	if reverse {
 		idx = sl.Len() - 1
 	}
 	for i := sl.Front(); i != nil; i = i.Next() {
-		values[idx] = &Item{
+		values[idx] = &item{
 			key: i.Key().([]byte),
 			pos: i.Value.(*datafile.DataPos),
 		}
@@ -93,18 +101,18 @@ func newSkipListIterator(reverse bool, sl *skiplist.SkipList) *SkipListIterator 
 			idx++
 		}
 	}
-	return &SkipListIterator{
+	return &skipListIterator{
 		reverse:  reverse,
 		curIndex: 0,
 		values:   values,
 	}
 }
 
-func (s *SkipListIterator) Rewind() {
+func (s *skipListIterator) rewind() {
 	s.curIndex = 0
 }
 
-func (s *SkipListIterator) Seek(key []byte) {
+func (s *skipListIterator) seek(key []byte) {
 	if s.reverse {
 		s.curIndex = sort.Search(len(s.values), func(i int) bool {
 			return bytes.Compare(s.values[i].key, key) <= 0
@@ -116,22 +124,22 @@ func (s *SkipListIterator) Seek(key []byte) {
 	}
 }
 
-func (s *SkipListIterator) Next() {
+func (s *skipListIterator) next() {
 	s.curIndex += 1
 }
 
-func (s *SkipListIterator) Valid() bool {
+func (s *skipListIterator) valid() bool {
 	return s.curIndex < len(s.values)
 }
 
-func (s *SkipListIterator) Key() []byte {
+func (s *skipListIterator) key() []byte {
 	return s.values[s.curIndex].key
 }
 
-func (s *SkipListIterator) Value() *datafile.DataPos {
+func (s *skipListIterator) value() *datafile.DataPos {
 	return s.values[s.curIndex].pos
 }
 
-func (s *SkipListIterator) Close() {
+func (s *skipListIterator) close() {
 	s.values = nil
 }

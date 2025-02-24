@@ -5,11 +5,11 @@ import (
 	"github.com/XiXi-2024/xixi-kv/index"
 )
 
-// Iterator 索引迭代器, 面向用户
+// Iterator 数据库层迭代器, 面向用户
 type Iterator struct {
-	indexIter index.Iterator  // 索引迭代器, 遍历 key
-	db        *DB             // DB 实例, 用于获取 value
-	options   IteratorOptions // 用户配置项
+	indexIter *index.IndexIterator // 索引迭代器, 遍历 key
+	db        *DB                  // DB 实例, 用于获取 value
+	options   IteratorOptions      // 用户配置项
 }
 
 func (db *DB) NewIterator(opts IteratorOptions) *Iterator {
