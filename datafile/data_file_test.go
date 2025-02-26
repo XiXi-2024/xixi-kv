@@ -20,19 +20,20 @@ func TestDataFile_WriteAndRead(t *testing.T) {
 
 	// 测试小数据写入和读取
 	data1 := []byte("hello world")
-	pos1, err := df.write(data1)
+	pos1, err := df.writeSingle(data1)
 	assert.Nil(t, err)
 	assert.NotNil(t, pos1)
 	data2, err := df.read(pos1.BlockID, pos1.Offset)
 	assert.Nil(t, err)
 	assert.Equal(t, data1, data2)
+	t.Log(string(data1), string(data2))
 
 	// 测试大数据写入和读取（跨块）
 	data1 = make([]byte, blockSize)
 	for i := range data1 {
 		data1[i] = byte(i % 256)
 	}
-	pos1, err = df.write(data1)
+	pos1, err = df.writeSingle(data1)
 	assert.Nil(t, err)
 	assert.NotNil(t, pos1)
 	data2, err = df.read(pos1.BlockID, pos1.Offset)
@@ -42,12 +43,12 @@ func TestDataFile_WriteAndRead(t *testing.T) {
 	// 4. 测试边界条件：块边界写入
 	// 先写入一些数据，使lastBlockSize接近blockSize
 	data1 = make([]byte, blockSize-df.lastBlockSize-chunkHeaderSize+1)
-	pos1, err = df.write(data1)
+	pos1, err = df.writeSingle(data1)
 	assert.Nil(t, err)
 	assert.NotNil(t, pos1)
 	// 此时再写入数据会触发块填充
 	data2 = []byte("test")
-	pos2, err := df.write(data2)
+	pos2, err := df.writeSingle(data2)
 	assert.Nil(t, err)
 	// 验证数据写入到了新的块
 	assert.Equal(t, df.lastBlockID-1, pos1.BlockID)
@@ -81,7 +82,7 @@ func TestDataReader(t *testing.T) {
 		Key:   []byte("key1"),
 		Value: []byte("value1"),
 	}
-	header := make([]byte, MaxChunkHeaderSize)
+	header := make([]byte, MaxLogRecordHeaderSize)
 	pos1, err := df.WriteLogRecord(logRecord1, header)
 	assert.Nil(t, err)
 	// 读取
@@ -140,7 +141,8 @@ func TestDataReader_HintRecord(t *testing.T) {
 		Offset:  100,
 		Size:    200,
 	}
-	err = df.WriteHintRecord(key, pos)
+	hintPos := make([]byte, MaxLogRecordPosSize)
+	err = df.WriteHintRecord(key, hintPos, pos)
 	assert.Nil(t, err)
 
 	// 2. 读取hint记录

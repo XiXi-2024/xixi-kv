@@ -30,12 +30,13 @@ const (
 
 // DataFile 数据文件
 type DataFile struct {
-	ID            FileID         // 文件 id
-	ReadWriter    fio.ReadWriter // IO 实现
-	lastBlockID   uint32         // 末尾 Block ID
-	lastBlockSize uint32         // 末尾 Block 已使用字节数
-	closed        bool           // 文件关闭标识
-	headerBuf     []byte         // chunk 头部复用缓冲区
+	ID             FileID         // 文件 id
+	ReadWriter     fio.ReadWriter // IO 实现
+	lastBlockID    uint32         // 末尾 Block ID
+	lastBlockSize  uint32         // 末尾 Block 已使用字节数
+	closed         bool           // 文件关闭标识
+	headerBuf      []byte         // chunk 头部复用缓冲区
+	bufferedWrites [][]byte       // 批处理缓存数据
 }
 
 var blockPool = sync.Pool{
@@ -84,22 +85,24 @@ func (df *DataFile) WriteLogRecord(logRecord *LogRecord, header []byte) (*DataPo
 	if df.closed {
 		return nil, ErrClosed
 	}
+
 	buf := bytebufferpool.Get()
-	buf.Reset()
 	defer bytebufferpool.Put(buf)
 	data := EncodeLogRecord(logRecord, header, buf)
 
-	pos, err := df.write(data)
+	pos, err := df.writeSingle(data)
 
 	return pos, err
 }
 
-func (df *DataFile) WriteHintRecord(key []byte, pos *DataPos) error {
+func (df *DataFile) WriteHintRecord(key []byte, hintPos []byte, pos *DataPos) error {
 	if df.closed {
 		return ErrClosed
 	}
-	data := EncodeHintRecord(key, pos)
-	_, err := df.write(data)
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	data := EncodeHintRecord(key, pos, hintPos, buf)
+	_, err := df.writeSingle(data)
 	return err
 }
 
@@ -108,29 +111,79 @@ func (df *DataFile) WriteMergeFinRecord(id FileID) error {
 		return ErrClosed
 	}
 	data := EncodeMergeFinRecord(id)
-	_, err := df.write(data)
+	_, err := df.writeSingle(data)
 	return err
 }
 
-func (df *DataFile) write(data []byte) (*DataPos, error) {
+func (df *DataFile) WriteStagedLogRecord(logRecord *LogRecord, header []byte) {
+	if df.closed {
+		return
+	}
+	// 不应归还缓冲区, 避免数据被覆盖
+	buf := bytebufferpool.Get()
+	data := EncodeLogRecord(logRecord, header, buf)
+	df.bufferedWrites = append(df.bufferedWrites, data)
+	return
+}
+
+func (df *DataFile) writeSingle(data []byte) (*DataPos, error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
+	pos, nextID, nextSize := df.writeToBuf(data, df.lastBlockID, df.lastBlockSize, buf)
+	_, err := df.ReadWriter.Write(buf.Bytes())
+	if err != nil {
+		return nil, err
+	}
+	df.lastBlockID = nextID
+	df.lastBlockSize = nextSize
+	return pos, nil
+}
+
+func (df *DataFile) writeAll(records [][]byte) ([]*DataPos, error) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	var (
+		nextID    = df.lastBlockID
+		nextSize  = df.lastBlockSize
+		recordPos = make([]*DataPos, 0, len(records))
+	)
+	for _, data := range records {
+		pos, id, size := df.writeToBuf(data, nextID, nextSize, buf)
+		nextID, nextSize = id, size
+		recordPos = append(recordPos, pos)
+	}
+	_, err := df.ReadWriter.Write(buf.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	df.lastBlockID = nextID
+	df.lastBlockSize = nextSize
+
+	return recordPos, nil
+}
+
+func (df *DataFile) writeToBuf(data []byte, blockID uint32, blockLen uint32, buf *bytebufferpool.ByteBuffer) (*DataPos, uint32, uint32) {
+	var (
+		nextID   = blockID
+		nextSize = blockLen
+	)
 
 	// 如果末尾 Block 剩余字节小于等于 chunk 头部所需字节则进行填充
 	// 等于 chunk 头部时 data 长度为 0, 无意义
 	// 仅初始写入时存在该情况
-	if df.lastBlockSize+chunkHeaderSize >= blockSize && df.lastBlockSize != blockSize {
-		p := make([]byte, blockSize-df.lastBlockSize)
+	if nextSize+chunkHeaderSize >= blockSize && nextSize != blockSize {
+		p := make([]byte, blockSize-nextSize)
 		buf.B = append(buf.B, p...)
 
-		df.lastBlockID += 1
-		df.lastBlockSize = 0
+		nextID += 1
+		nextSize = 0
 	}
 
 	pos := &DataPos{
 		Fid:     df.ID,
-		BlockID: df.lastBlockID,
-		Offset:  df.lastBlockSize,
+		BlockID: nextID,
+		Offset:  nextSize,
 	}
 
 	var (
@@ -145,7 +198,7 @@ func (df *DataFile) write(data []byte) (*DataPos, error) {
 		writeSize = totalSize - writtenSize
 		if writtenSize == 0 {
 			// 仅在初始时存在 currBlockSize > 0 的场景
-			writeSize = min(writeSize, blockSize-df.lastBlockSize-chunkHeaderSize)
+			writeSize = min(writeSize, blockSize-nextSize-chunkHeaderSize)
 		} else {
 			writeSize = min(writeSize, blockSize-chunkHeaderSize)
 		}
@@ -176,7 +229,6 @@ func (df *DataFile) write(data []byte) (*DataPos, error) {
 		sum := crc32.ChecksumIEEE(df.headerBuf[4:])
 		sum = crc32.Update(sum, crc32.IEEETable, data[writtenSize:writtenSize+writeSize])
 		binary.LittleEndian.PutUint32(df.headerBuf[:4], sum)
-
 		_, _ = buf.Write(df.headerBuf)
 		_, _ = buf.Write(data[writtenSize : writtenSize+writeSize])
 
@@ -184,26 +236,30 @@ func (df *DataFile) write(data []byte) (*DataPos, error) {
 		chunkCount++
 	}
 
-	_, err := df.ReadWriter.Write(buf.Bytes())
+	pos.Size = chunkCount*chunkHeaderSize + totalSize
+
+	nextSize += pos.Size
+	nextID += nextSize / blockSize
+	nextSize %= blockSize
+
+	return pos, nextID, nextSize
+}
+
+func (df *DataFile) FlushStaged() ([]*DataPos, error) {
+	dataPos, err := df.writeAll(df.bufferedWrites)
 	if err != nil {
 		return nil, err
 	}
-
-	pos.Size = chunkCount*chunkHeaderSize + totalSize
-
-	// 最后再更新, 中途出现 err 可回滚
-	df.lastBlockSize += pos.Size
-	df.lastBlockID += df.lastBlockSize / blockSize
-	df.lastBlockSize %= blockSize
-
-	return pos, nil
+	// 清空暂存数据
+	df.bufferedWrites = df.bufferedWrites[:0]
+	return dataPos, nil
 }
 
-func (df *DataFile) ReadLogRecord(blockID uint32, offset uint32) (*LogRecord, error) {
+func (df *DataFile) ReadLogRecord(logRecordPos *DataPos) (*LogRecord, error) {
 	if df.closed {
 		return nil, ErrClosed
 	}
-	data, err := df.read(blockID, offset)
+	data, err := df.read(logRecordPos.BlockID, logRecordPos.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -379,4 +435,10 @@ func (df *DataFile) Close() error {
 	}
 	df.closed = true
 	return df.ReadWriter.Close()
+}
+
+func GetMaxDataSize(record *LogRecord) int {
+	size := MaxLogRecordHeaderSize + len(record.Key) + len(record.Value) + binary.MaxVarintLen64 + 1
+	size += chunkHeaderSize + (size/blockSize+1)*chunkHeaderSize
+	return size
 }

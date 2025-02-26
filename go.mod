@@ -3,6 +3,7 @@ module github.com/XiXi-2024/xixi-kv
 go 1.23.4
 
 require (
+	github.com/bwmarrin/snowflake v0.3.0
 	github.com/cespare/xxhash v1.1.0
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/gin-gonic/gin v1.10.0

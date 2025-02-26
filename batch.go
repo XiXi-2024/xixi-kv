@@ -1,170 +1,262 @@
 package xixi_kv
 
 import (
-	"encoding/binary"
+	"bytes"
+	"fmt"
 	"github.com/XiXi-2024/xixi-kv/datafile"
+	"github.com/bwmarrin/snowflake"
+	"github.com/cespare/xxhash"
 	"sync"
-	"sync/atomic"
 )
 
-// 非事务 key 前缀标识
-const nonTransactionSeqNo uint64 = 0
-
-// 事务完成标识 key
-var txnFinKey = []byte("txn-fin")
-
-// WriteBatch 事务客户端
 // todo 优化点：新增方法结束自动提交的事务形式
-// todo 优化点：新增 Get 方法
-type WriteBatch struct {
-	options       WriteBatchOptions
-	mu            *sync.Mutex
-	db            *DB
-	pendingWrites map[string]*datafile.LogRecord // 暂存数据
+// todo 优化点：gpt查询优化点
+
+const (
+	maxFinRecord = 70
+)
+
+// Batch 批处理操作客户端
+type Batch struct {
+	db         *DB
+	staged     []*datafile.LogRecord // 暂存数据, 数组存储保证添加顺序
+	stageIndex map[uint64][]int      // 加快暂存数据查询效率
+	options    BatchOptions          // 批处理配置
+	mu         sync.RWMutex          // 批处理互斥锁, 保证批处理本身并发安全
+	committed  bool                  // 已提交标识
+	batchID    snowflake.ID          // 批次唯一ID
+	dataSize   int64                 // 当前累计数据量
 }
 
-// NewWriteBatch 创建新 WriteBatch 实例
-func (db *DB) NewWriteBatch(opts WriteBatchOptions) *WriteBatch {
-	return &WriteBatch{
-		options:       opts,
-		mu:            new(sync.Mutex),
-		db:            db,
-		pendingWrites: make(map[string]*datafile.LogRecord),
+func (db *DB) NewBatch(options BatchOptions) *Batch {
+	// 保证批处理期间禁用 DB 客户端使用, 保证 Batch 客户端保存全量最新数据
+	db.mu.RLock()
+
+	batch := &Batch{
+		db:        db,
+		options:   options,
+		committed: false,
 	}
+	node, err := snowflake.NewNode(1)
+	if err != nil {
+		panic(fmt.Sprintf("snowflake.NewNode(1) failed: %v", err))
+	}
+	batch.batchID = node.Generate()
+	return batch
 }
 
-func (wb *WriteBatch) Put(key, value []byte) error {
+func (b *Batch) Put(key []byte, value []byte) error {
 	if len(key) == 0 {
 		return ErrKeyIsEmpty
 	}
-
-	wb.mu.Lock()
-	defer wb.mu.Unlock()
-
-	// 仅暂存
-	logRecord := &datafile.LogRecord{Key: key, Value: value}
-	wb.pendingWrites[string(key)] = logRecord
+	b.mu.Lock()
+	if b.committed {
+		return ErrBatchCommitted
+	}
+	logRecord := b.findPendingRecord(key)
+	if logRecord == nil {
+		logRecord = &datafile.LogRecord{
+			Key:   key,
+			Value: value,
+			Type:  datafile.LogRecordNormal,
+		}
+		b.dataSize += int64(datafile.GetMaxDataSize(logRecord))
+		b.addPendingRecord(key, logRecord)
+		b.mu.Unlock()
+		return nil
+	} else {
+		oldSize := int64(datafile.GetMaxDataSize(logRecord))
+		logRecord.Type = datafile.LogRecordNormal
+		// 内存复用
+		logRecord.Key = append(logRecord.Key[:0], key...)
+		logRecord.Value = append(logRecord.Value[:0], value...)
+		newSize := int64(datafile.GetMaxDataSize(logRecord))
+		if b.dataSize+newSize-oldSize+maxFinRecord > b.db.options.DataFileSize {
+			if err := b.FlushStaged(); err != nil {
+				return fmt.Errorf("flush staged failed: %v", err)
+			}
+		}
+		b.dataSize += newSize - oldSize
+	}
 	return nil
 }
 
-// Delete 根据 key 删除元素
-func (wb *WriteBatch) Delete(key []byte) error {
+func (b *Batch) Get(key []byte) ([]byte, error) {
+	if len(key) == 0 {
+		return nil, ErrKeyIsEmpty
+	}
+
+	b.mu.RLock()
+	if b.db.closed {
+		return nil, ErrDBClosed
+	}
+	if b.committed {
+		return nil, ErrBatchCommitted
+	}
+	logRecord := b.findPendingRecord(key)
+	b.mu.RUnlock()
+
+	// 优先查询内存中暂存的最新数据
+	if logRecord != nil {
+		if logRecord.Type == datafile.LogRecordDeleted {
+			return nil, ErrKeyNotFound
+		}
+		return logRecord.Value, nil
+	}
+
+	// 内存中不存在再查询磁盘中的记录
+	pos := b.db.index.Get(key)
+	if pos == nil {
+		return nil, ErrKeyNotFound
+	}
+	logRecord, err := b.db.activeFile.ReadLogRecord(pos)
+	if err != nil {
+		return nil, err
+	}
+
+	if logRecord.Type == datafile.LogRecordDeleted {
+		panic("Deleted data cannot exist in the index")
+	}
+
+	return logRecord.Value, nil
+}
+
+func (b *Batch) Delete(key []byte) error {
 	if len(key) == 0 {
 		return ErrKeyIsEmpty
 	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-	wb.mu.Lock()
-	defer wb.mu.Unlock()
+	// 优先操作内存中最新的暂存数据
+	logRecord := b.findPendingRecord(key)
+	if logRecord != nil {
+		logRecord.Type = datafile.LogRecordDeleted
+		logRecord.Value = nil
+	}
 
-	logRecordPos := wb.db.index.Get(key)
-
-	// 待删除元素未提交, 删除缓存即可
-	if logRecordPos == nil {
-		if wb.pendingWrites[string(key)] != nil {
-			delete(wb.pendingWrites, string(key))
-		}
+	pos := b.db.index.Get(key)
+	if pos == nil {
 		return nil
 	}
 
-	// 待删除元素已持久化, 追加墓碑值
-	logRecord := &datafile.LogRecord{Key: key, Type: datafile.LogRecordDeleted}
-	wb.pendingWrites[string(key)] = logRecord
+	// 持久化到磁盘, 追加墓碑值
+	logRecord = &datafile.LogRecord{
+		Key:  key,
+		Type: datafile.LogRecordDeleted,
+	}
+	// 如果当前数据文件不足以容纳暂存数据, 进行一次刷新
+	size := int64(datafile.GetMaxDataSize(logRecord))
+	if b.dataSize+size+maxFinRecord > b.db.options.DataFileSize {
+		if err := b.FlushStaged(); err != nil {
+			return fmt.Errorf("flush staged failed: %v", err)
+		}
+	}
+	b.addPendingRecord(key, logRecord)
+	b.dataSize += size
 	return nil
 }
 
-// Commit 事务提交, 将暂存数据持久化并更新索引
-func (wb *WriteBatch) Commit() error {
-	// 对 WB 实例加锁
-	wb.mu.Lock()
-	defer wb.mu.Unlock()
+func (b *Batch) Commit() error {
+	// 提交后允许操作 DB 实例
+	defer b.db.mu.RUnlock()
 
-	// 缓存为空
-	if len(wb.pendingWrites) == 0 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if len(b.staged) == 0 {
 		return nil
 	}
-
-	// 已缓存个数超过配置的最大数量
-	// todo bug：是否应按最大数量提交
-	if uint(len(wb.pendingWrites)) > wb.options.MaxBatchNum {
-		return ErrExceedMaxBatchNum
+	if b.committed {
+		return ErrBatchCommitted
 	}
 
-	// 对 DB 实例加锁, 串行化实现隔离性
-	wb.db.mu.Lock()
-	defer wb.db.mu.Unlock()
-
-	// 获取当前最新的事务序列号
-	seqNo := atomic.AddUint64(&wb.db.seqNo, 1)
-
-	// 遍历当前事务客户端的写入缓存, 依次进行写入
-	// 由于缓存包含最新数据, 故允许无序遍历
-	positions := make(map[string]*datafile.DataPos)
-	for _, record := range wb.pendingWrites {
-		// 无需重复加锁, 使用不加锁的 appendLogRecord 方法
-		logRecordPos, err := wb.db.appendLogRecord(&datafile.LogRecord{
-			// 将 key 和 seqNo 进行合并, 节省空间
-			Key:   logRecordKeyWithSeq(record.Key, seqNo),
-			Value: record.Value,
-			Type:  record.Type,
-		})
-
-		if err != nil {
-			return err
-		}
-
-		// 暂存索引信息, 所有数据写入完成后统一更新索引
-		positions[string(record.Key)] = logRecordPos
-	}
-
-	// 事务成功, 追加带事务完成标识的日志记录
-	finishedRecord := &datafile.LogRecord{
-		Key:  logRecordKeyWithSeq(txnFinKey, seqNo),
-		Type: datafile.LogRecordTxnFinished,
-	}
-	if _, err := wb.db.appendLogRecord(finishedRecord); err != nil {
+	err := b.FlushStaged()
+	if err != nil {
 		return err
 	}
 
-	// 根据配置项决定是否立即持久化
-	if wb.options.SyncWrites && wb.db.activeFile != nil {
-		if err := wb.db.activeFile.Sync(); err != nil {
+	// 追加批处理完成标识记录
+	_, err = b.db.activeFile.WriteLogRecord(&datafile.LogRecord{
+		Key:  b.batchID.Bytes(),
+		Type: datafile.LogRecordBatchFinished,
+	}, b.db.logRecordHeader)
+
+	if err != nil {
+		return err
+	}
+
+	b.staged = nil
+	b.stageIndex = nil
+	b.committed = true
+	return nil
+}
+
+// 通过 map 快速查找 key 对应的暂存记录位置
+func (b *Batch) findPendingRecord(key []byte) *datafile.LogRecord {
+	if len(b.stageIndex) == 0 {
+		return nil
+	}
+
+	hashKey := xxhash.Sum64(key)
+	for _, id := range b.stageIndex[hashKey] {
+		if bytes.Equal(b.staged[id].Key, key) {
+			return b.staged[id]
+		}
+	}
+	return nil
+}
+
+// 新增暂存数据并记录位置
+func (b *Batch) addPendingRecord(key []byte, record *datafile.LogRecord) {
+	b.staged = append(b.staged, record)
+	// 延迟初始化
+	if b.stageIndex == nil {
+		b.stageIndex = make(map[uint64][]int)
+	}
+	hashKey := xxhash.Sum64(key)
+	b.stageIndex[hashKey] = append(b.stageIndex[hashKey], len(b.staged)-1)
+}
+
+func (b *Batch) FlushStaged() error {
+	// 顺序遍历暂存数据依次追加磁盘
+	for _, record := range b.staged {
+		record.BatchID = uint64(b.batchID)
+		b.db.activeFile.WriteStagedLogRecord(record, b.db.logRecordHeader)
+	}
+
+	// IO 层面将所有数据字节一次性写入
+	dataPos, err := b.db.activeFile.FlushStaged()
+	if err != nil {
+		return err
+	}
+	if len(dataPos) != len(b.staged) {
+		panic("chunk positions length is not equal to pending writes length")
+	}
+
+	// 根据配置判断是否立即持久化
+	if b.options.Sync {
+		if err := b.db.activeFile.Sync(); err != nil {
 			return err
 		}
 	}
 
-	// 数据持久化完成 更新内存索引
-	for _, record := range wb.pendingWrites {
-		pos := positions[string(record.Key)]
-		var oldPos *datafile.DataPos
-		if record.Type == datafile.LogRecordNormal {
-			oldPos = wb.db.index.Put(record.Key, pos)
-		}
-		// 追加形式, 遇到删除状态的日志记录同样更新索引
-		// todo bug：未统计 pos 本身的字节数
+	// 追加操作全部完成后, 更新索引
+	for i, record := range b.staged {
+		var pos *datafile.DataPos
 		if record.Type == datafile.LogRecordDeleted {
-			oldPos, _ = wb.db.index.Delete(record.Key)
+			pos, _ = b.db.index.Delete(record.Key)
+		} else {
+			pos = b.db.index.Put(record.Key, dataPos[i])
 		}
-		if oldPos != nil {
-			wb.db.reclaimSize += int64(oldPos.Size)
+		if pos != nil {
+			b.db.reclaimSize += int64(pos.Size)
 		}
 	}
 
 	// 清空暂存数据
-	wb.pendingWrites = make(map[string]*datafile.LogRecord)
-
+	b.staged = b.staged[:0]
+	b.stageIndex = map[uint64][]int{}
+	b.dataSize = 0
 	return nil
-}
-
-// 将 key 和事务ID seqNo 合并编码
-func logRecordKeyWithSeq(key []byte, seqNo uint64) []byte {
-	// 获取 seqNo 实际占用字节数
-	seq := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(seq[:], seqNo)
-
-	// 按实际长度创建字节数组顺序存储
-	encKey := make([]byte, n+len(key))
-	copy(encKey[:n], seq[:n])
-	copy(encKey[n:], key)
-
-	return encKey
 }

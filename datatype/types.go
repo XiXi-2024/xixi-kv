@@ -120,7 +120,7 @@ func (dts *DataTypeService) HSet(key, field, value []byte) (bool, error) {
 	}
 
 	// 涉及更新数据和元数据两步操作, 需保证原子性
-	wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+	wb := dts.db.NewBatch(bitcask.DefaultBatchOptions)
 	// 不存在则更新元数据
 	if !exist {
 		meta.size++
@@ -180,7 +180,7 @@ func (dts *DataTypeService) HDel(key, field []byte) (bool, error) {
 	// 当field存在时进行删除
 	if exist {
 		// 涉及更新数据和元数据两步操作, 需保证原子性
-		wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+		wb := dts.db.NewBatch(bitcask.DefaultBatchOptions)
 		meta.size--
 		_ = wb.Put(key, meta.encode())
 		_ = wb.Delete(encKey)
@@ -252,7 +252,7 @@ func (dts *DataTypeService) SAdd(key, member []byte) (bool, error) {
 	// 当 member 不存在时新增
 	if _, err = dts.db.Get(sk.encode()); err == bitcask.ErrKeyNotFound {
 		// 涉及更新数据和元数据两步操作, 需保证原子性
-		wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+		wb := dts.db.NewBatch(bitcask.DefaultBatchOptions)
 		meta.size++
 		_ = wb.Put(key, meta.encode())
 		// value 为 nil
@@ -315,7 +315,7 @@ func (dts *DataTypeService) SRem(key, member []byte) (bool, error) {
 	}
 
 	// 涉及更新数据和元数据两步操作, 需保证原子性
-	wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+	wb := dts.db.NewBatch(bitcask.DefaultBatchOptions)
 	meta.size--
 	_ = wb.Put(key, meta.encode())
 	_ = wb.Delete(sk.encode())
@@ -368,7 +368,7 @@ func (dts *DataTypeService) pushInner(key, element []byte, isLeft bool) (uint32,
 	}
 
 	// 涉及更新数据和元数据两步操作, 需保证原子性
-	wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+	wb := dts.db.NewBatch(bitcask.DefaultBatchOptions)
 	meta.size++
 	if isLeft {
 		meta.head--
@@ -462,7 +462,7 @@ func (dts *DataTypeService) ZAdd(key []byte, score float64, member []byte) (bool
 	}
 
 	// 涉及更新数据和元数据两步操作, 需保证原子性
-	wb := dts.db.NewWriteBatch(bitcask.DefaultWriteBatchOptions)
+	wb := dts.db.NewBatch(bitcask.DefaultBatchOptions)
 	if !exist {
 		// 元素不存在进行新增, 更新元数据
 		meta.size++

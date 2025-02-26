@@ -4,14 +4,15 @@ import (
 	"errors"
 	"github.com/edsrzf/mmap-go"
 	"io"
+	"log"
 	"os"
 )
 
 var ErrFileHasBeenClosed = errors.New("file has been closed")
 
 // 选择 mmap 类型 IO 实现时处理数据量不应过大, 且数据文件容量配置参数难以传递
-// 故设置映射空间为 512MB, 由上层保证该 IO 实现下的配置限制
-const dataFileSize = 512 * 1024 * 1024
+// 故设置映射空间为 1G, 由上层保证该 IO 实现下的数据文件容量小于等于512MB
+const dataFileSize = 1024 * 1024 * 1024
 
 // MMap 内存文件映射 IO 实现
 // todo 扩展点：预读机制
@@ -63,6 +64,7 @@ func (mmap *MMap) Read(b []byte, offset int64) (int, error) {
 }
 
 func (mmap *MMap) Write(b []byte) (int, error) {
+	log.Println(1)
 	if mmap.file == nil {
 		return 0, ErrFileHasBeenClosed
 	}
