@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -197,8 +198,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 
 	// 更新索引, 并维护无效数据量
 	if oldPos := db.index.Put(key, pos); oldPos != nil {
-		// todo 非并发安全
-		db.reclaimSize += int64(oldPos.Size)
+		atomic.AddInt64(&db.reclaimSize, int64(oldPos.Size))
 	}
 
 	return nil
@@ -250,17 +250,14 @@ func (db *DB) Delete(key []byte) error {
 		return err
 	}
 	// 墓碑值本身可视为无效数据
-	// todo 非并发安全
-	db.reclaimSize += int64(pos.Size)
+	atomic.AddInt64(&db.reclaimSize, int64(pos.Size))
 
 	// 更新索引信息
-	oldPos, ok := db.index.Delete(key)
-	if !ok {
-		return ErrIndexUpdateFailed
-	}
+	oldPos := db.index.Delete(key)
 	if oldPos != nil {
-		// todo 非并发安全
-		db.reclaimSize += int64(oldPos.Size)
+		atomic.AddInt64(&db.reclaimSize, int64(oldPos.Size))
+	} else {
+		return ErrIndexUpdateFailed
 	}
 
 	return nil
@@ -487,7 +484,7 @@ func (db *DB) loadIndexFromDataFiles(fileIds []uint32, nonMergeFileId uint32) er
 		var oldPos *datafile.DataPos
 		// 发现墓碑值同样删除对应的索引信息
 		if typ == datafile.LogRecordDeleted {
-			oldPos, _ = db.index.Delete(key)
+			oldPos = db.index.Delete(key)
 			db.reclaimSize += int64(pos.Size)
 		} else {
 			oldPos = db.index.Put(key, pos)
@@ -598,7 +595,6 @@ func (db *DB) getValueByPosition(logRecordPos *datafile.DataPos) ([]byte, error)
 	}
 	// 根据偏移读取对应的数据
 	value, err := dataFile.ReadRecordValue(logRecordPos)
-
 	if err != nil {
 		return nil, err
 	}

@@ -270,7 +270,7 @@ func (b *Batch) FlushStaged() error {
 	for i, record := range b.staged {
 		var pos *datafile.DataPos
 		if record.Type == datafile.LogRecordDeleted {
-			pos, _ = b.db.index.Delete(record.Key)
+			pos = b.db.index.Delete(record.Key)
 		} else {
 			pos = b.db.index.Put(record.Key, dataPos[i])
 		}

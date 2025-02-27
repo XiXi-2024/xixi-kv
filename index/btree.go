@@ -53,16 +53,16 @@ func (bt *btreeIndex) get(key []byte) *datafile.DataPos {
 	return btreeItem.(*item).pos
 }
 
-func (bt *btreeIndex) delete(key []byte) (*datafile.DataPos, bool) {
+func (bt *btreeIndex) delete(key []byte) *datafile.DataPos {
 	if bt.tree == nil {
-		return nil, false
+		return nil
 	}
 	it := &item{key: key}
 	oldItem := bt.tree.Delete(it)
 	if oldItem == nil {
-		return nil, false
+		return nil
 	}
-	return oldItem.(*item).pos, true
+	return oldItem.(*item).pos
 }
 
 func (bt *btreeIndex) size() int {

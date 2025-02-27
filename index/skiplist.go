@@ -41,19 +41,16 @@ func (s *skipListIndex) get(key []byte) *datafile.DataPos {
 	return oldItem.Value.(*datafile.DataPos)
 }
 
-func (s *skipListIndex) delete(key []byte) (*datafile.DataPos, bool) {
+func (s *skipListIndex) delete(key []byte) *datafile.DataPos {
 	if s.list == nil {
-		return nil, false
+		return nil
 	}
 	oldItem := s.list.Remove(key)
 	var oldValue *datafile.DataPos
 	if oldItem != nil {
 		oldValue = oldItem.Value.(*datafile.DataPos)
 	}
-	if oldItem == nil {
-		return oldValue, false
-	}
-	return oldValue, true
+	return oldValue
 }
 
 func (s *skipListIndex) size() int {

@@ -26,8 +26,8 @@ type index interface {
 	get(key []byte) *datafile.DataPos
 
 	// 删除元素
-	// 如果操作成功, 返回 true
-	delete(key []byte) (*datafile.DataPos, bool)
+	// 如果元素不存在返回 nil
+	delete(key []byte) *datafile.DataPos
 
 	// 获取元素个数
 	size() int
