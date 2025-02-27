@@ -218,8 +218,6 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrKeyNotFound
 	}
 
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	// 获取 value 并返回
 	return db.getValueByPosition(logRecordPos)
 }
@@ -284,9 +282,6 @@ func (db *DB) ListKeys() [][]byte {
 
 // Fold 对数据库所有项执行自定义操作, 项改变不会同步数据库
 func (db *DB) Fold(fn func(key []byte, value []byte) bool) error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	// 利用索引迭代器进行遍历
 	iterator := db.index.Iterator(false)
 	// 使用完成后必须关闭, 否则可能导致 B+ 树索引的读写事务互斥阻塞
@@ -582,12 +577,21 @@ func checkOptions(options Options) error {
 
 // 根据索引信息获取 value
 func (db *DB) getValueByPosition(logRecordPos *datafile.DataPos) ([]byte, error) {
-	// 根据文件 id 找到对应的数据文件
-	var dataFile *datafile.DataFile
+	var (
+		dataFile *datafile.DataFile
+		isActive bool
+	)
+	db.mu.RLock()
 	if db.activeFile.ID == logRecordPos.Fid {
 		dataFile = db.activeFile
+		isActive = true
 	} else {
 		dataFile = db.olderFiles[logRecordPos.Fid]
+		// 缩小锁粒度, 非活跃文件直接释放锁并发读取
+		db.mu.RUnlock()
+	}
+	if isActive {
+		defer db.mu.RUnlock()
 	}
 	if dataFile == nil {
 		return nil, ErrDataFileNotFound
