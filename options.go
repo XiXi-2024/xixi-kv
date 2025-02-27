@@ -39,8 +39,7 @@ type IteratorOptions struct {
 
 // BatchOptions 批处理操作配置项
 type BatchOptions struct {
-	// 提交时是否立即持久化
-	Sync bool
+	Sync bool // 刷新时是否理解持久化
 }
 
 // DefaultOptions 默认Options, 供示例程序使用

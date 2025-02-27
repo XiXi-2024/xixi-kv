@@ -445,8 +445,11 @@ func (df *DataFile) Close() error {
 	return df.ReadWriter.Close()
 }
 
-func GetMaxDataSize(keySize, valueSize int) int {
+// GetLogRecordDiskSize 粗略计算 logRecord 在磁盘中占用的字节数
+func GetLogRecordDiskSize(keySize, valueSize int) int {
+	// 单条记录编码后的大致长度
 	size := MaxLogRecordHeaderSize + keySize + valueSize + binary.MaxVarintLen64 + 1
+	// chunk 头部的大致总长度
 	size += chunkHeaderSize + (size/blockSize+1)*chunkHeaderSize
 	return size
 }

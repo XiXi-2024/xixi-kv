@@ -43,15 +43,15 @@ func TestBatch_Put_Get(t *testing.T) {
 	defer destroyBatchDB(db)
 	assert.Nil(t, err)
 
-	// 1. 正常Put，验证数据一致性
+	// 1. 正常 Put 验证数据一致性
 	key1, value1 := utils.GetTestKey(1), utils.RandomValue(24)
 	err = batch.Put(key1, value1)
 	assert.Nil(t, err)
-	// 提交前通过batch.Get验证
+	// 提交前通过 batch.Get 验证
 	val, err := batch.Get(key1)
 	assert.Nil(t, err)
 	assert.Equal(t, value1, val)
-	// 提交后通过db.Get验证
+	// 提交后通过 db.Get 验证
 	err = batch.Commit()
 	assert.Nil(t, err)
 	val, err = db.Get(key1)

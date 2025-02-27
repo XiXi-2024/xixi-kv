@@ -1,7 +1,6 @@
 package xixi_kv
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/XiXi-2024/xixi-kv/datafile"
@@ -181,12 +180,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 
 	// 构造日志记录实例
 	logRecord := db.recordPool.Get().(*datafile.LogRecord)
-	defer func() {
-		logRecord.Key = logRecord.Key[:0]
-		logRecord.Value = logRecord.Value[:0]
-		logRecord.Type, logRecord.BatchID = 0, 0
-		db.recordPool.Put(logRecord)
-	}()
+	defer db.putRecordToPool(logRecord)
 	logRecord.Key = append(logRecord.Key, key...)
 	logRecord.Value = append(logRecord.Value, value...)
 
@@ -235,12 +229,7 @@ func (db *DB) Delete(key []byte) error {
 
 	// 构造 LogRecord 设置删除状态, 作为墓碑值追加到数据文件中
 	logRecord := db.recordPool.Get().(*datafile.LogRecord)
-	defer func() {
-		logRecord.Key = logRecord.Key[:0]
-		logRecord.Value = logRecord.Value[:0]
-		logRecord.Type, logRecord.BatchID = 0, 0
-		db.recordPool.Put(logRecord)
-	}()
+	defer db.putRecordToPool(logRecord)
 
 	logRecord.Key = append(logRecord.Key, key...)
 	logRecord.Type = datafile.LogRecordDeleted
@@ -363,7 +352,7 @@ func (db *DB) appendLogRecordWithLock(logRecord *datafile.LogRecord) (*datafile.
 // 将日志记录追加到当前活跃文件
 func (db *DB) appendLogRecord(logRecord *datafile.LogRecord) (*datafile.DataPos, error) {
 	// 活跃文件剩余空间不足, 新建数据文件作为新的活跃文件
-	maxSize := datafile.GetMaxDataSize(len(logRecord.Key), len(logRecord.Value))
+	maxSize := datafile.GetLogRecordDiskSize(len(logRecord.Key), len(logRecord.Value))
 	if db.activeFile.Size()+int64(maxSize) > db.options.DataFileSize {
 		if err := db.sync(); err != nil {
 			return nil, err
@@ -602,9 +591,10 @@ func (db *DB) getValueByPosition(logRecordPos *datafile.DataPos) ([]byte, error)
 	return value, nil
 }
 
-// 解析 key, 提取真实 key 和 seq 事务前缀
-func parseLogRecordKey(key []byte) ([]byte, uint64) {
-	seqNo, n := binary.Uvarint(key)
-	realKey := key[n:]
-	return realKey, seqNo
+func (db *DB) putRecordToPool(logRecord *datafile.LogRecord) {
+	// 不应复用 key 空间, 避免覆盖索引的 key
+	logRecord.Key = nil
+	logRecord.Value = logRecord.Value[:0]
+	logRecord.Type, logRecord.BatchID = 0, 0
+	db.recordPool.Put(logRecord)
 }
