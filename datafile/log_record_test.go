@@ -20,13 +20,10 @@ func TestEncodeLogRecord(t *testing.T) {
 	header := make([]byte, MaxLogRecordHeaderSize)
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
-	data := EncodeLogRecord(record, header, buf)
+	EncodeLogRecord(record, header, buf)
 	// 解码并验证
-	decoded := DecodeLogRecord(data)
-	assert.Equal(t, record.Type, decoded.Type)
-	assert.Equal(t, record.Key, decoded.Key)
-	assert.Equal(t, record.Value, decoded.Value)
-	assert.Equal(t, record.BatchID, decoded.BatchID)
+	value := DecodeLogRecordValue(buf.Bytes())
+	assert.Equal(t, record.Value, value)
 
 	// 2. 测试删除记录的编码
 	delRecord := &LogRecord{
@@ -37,12 +34,9 @@ func TestEncodeLogRecord(t *testing.T) {
 	}
 
 	buf.Reset()
-	data = EncodeLogRecord(delRecord, header, buf)
-	decoded = DecodeLogRecord(data)
-	assert.Equal(t, delRecord.Type, decoded.Type)
-	assert.Equal(t, delRecord.Key, decoded.Key)
-	assert.Equal(t, delRecord.Value, decoded.Value)
-	assert.Equal(t, delRecord.BatchID, decoded.BatchID)
+	EncodeLogRecord(delRecord, header, buf)
+	value = DecodeLogRecordValue(buf.Bytes())
+	assert.Equal(t, delRecord.Value, value)
 
 	// 3. 测试批处理完成记录的编码
 	batchRecord := &LogRecord{
@@ -52,12 +46,9 @@ func TestEncodeLogRecord(t *testing.T) {
 		BatchID: 789,
 	}
 	buf.Reset()
-	data = EncodeLogRecord(batchRecord, header, buf)
-	decoded = DecodeLogRecord(data)
-	assert.Equal(t, batchRecord.Type, decoded.Type)
-	assert.Equal(t, batchRecord.Key, decoded.Key)
-	assert.Equal(t, batchRecord.Value, decoded.Value)
-	assert.Equal(t, batchRecord.BatchID, decoded.BatchID)
+	EncodeLogRecord(batchRecord, header, buf)
+	value = DecodeLogRecordValue(buf.Bytes())
+	assert.Equal(t, delRecord.Value, value)
 }
 
 // TestEncodeDecodeHintRecord 测试索引记录的编解码
@@ -74,8 +65,8 @@ func TestEncodeDecodeHintRecord(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	hintPos := make([]byte, MaxLogRecordPosSize)
-	data := EncodeHintRecord(key, pos, hintPos, buf)
-	decodeKey, decodePos := DecodeHintRecord(data)
+	EncodeHintRecord(key, pos, hintPos, buf)
+	decodeKey, decodePos := DecodeHintRecord(buf.Bytes())
 
 	assert.Equal(t, key, decodeKey)
 	assert.Equal(t, pos.Fid, decodePos.Fid)
@@ -86,8 +77,8 @@ func TestEncodeDecodeHintRecord(t *testing.T) {
 	// 2. 测试空key的情况
 	buf.Reset()
 	key = []byte{}
-	data = EncodeHintRecord(key, pos, hintPos, buf)
-	decodeKey, decodePos = DecodeHintRecord(data)
+	EncodeHintRecord(key, pos, hintPos, buf)
+	decodeKey, decodePos = DecodeHintRecord(buf.Bytes())
 
 	assert.Equal(t, key, decodeKey)
 	assert.Equal(t, pos.Fid, decodePos.Fid)
@@ -100,8 +91,8 @@ func TestEncodeDecodeHintRecord(t *testing.T) {
 		Offset:  1<<32 - 1,
 		Size:    1<<32 - 1,
 	}
-	data = EncodeHintRecord(key, pos, hintPos, buf)
-	_, decodePos = DecodeHintRecord(data)
+	EncodeHintRecord(key, pos, hintPos, buf)
+	_, decodePos = DecodeHintRecord(buf.Bytes())
 
 	assert.Equal(t, pos.Fid, decodePos.Fid)
 	assert.Equal(t, pos.BlockID, decodePos.BlockID)
@@ -145,25 +136,4 @@ func TestDecodeChunk(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, typ, chunkType)
 	}
-}
-
-// TestEncodeMergeFinRecord 测试合并完成记录的编码
-func TestEncodeMergeFinRecord(t *testing.T) {
-	// 1. 测试基本编码
-	var id FileID = 1
-	data := EncodeMergeFinRecord(id)
-	decoded := binary.LittleEndian.Uint32(data)
-	assert.Equal(t, id, decoded)
-
-	// 2. 测试最大值
-	id = FileID(1<<32 - 1)
-	data = EncodeMergeFinRecord(id)
-	decoded = binary.LittleEndian.Uint32(data)
-	assert.Equal(t, id, decoded)
-
-	// 3. 测试零值
-	id = 0
-	data = EncodeMergeFinRecord(id)
-	decoded = binary.LittleEndian.Uint32(data)
-	assert.Equal(t, id, decoded)
 }

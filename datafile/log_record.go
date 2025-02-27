@@ -70,7 +70,7 @@ type TransactionRecords struct {
 }
 
 // EncodeLogRecord 对 LogRecord 实例编码
-func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.ByteBuffer) []byte {
+func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.ByteBuffer) {
 	// type
 	header[0] = logRecord.Type
 
@@ -87,7 +87,6 @@ func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.By
 	buf.B = append(buf.B, header[:idx]...)
 	buf.B = append(buf.B, logRecord.Key...)
 	buf.B = append(buf.B, logRecord.Value...)
-	return buf.Bytes()
 }
 
 func DecodeLogRecord(data []byte) *LogRecord {
@@ -130,7 +129,22 @@ func DecodeLogRecord(data []byte) *LogRecord {
 	}
 }
 
-func EncodeHintRecord(key []byte, pos *DataPos, hintPos []byte, buf *bytebufferpool.ByteBuffer) []byte {
+func DecodeLogRecordValue(data []byte) []byte {
+	idx := 1
+	keySize, n := binary.Varint(data[idx:])
+	idx += n
+	valueSize, n := binary.Varint(data[idx:])
+	idx += n
+	_, n = binary.Uvarint(data[idx:])
+	idx += n
+
+	if valueSize == 0 {
+		return nil
+	}
+	return data[idx+int(keySize):]
+}
+
+func EncodeHintRecord(key []byte, pos *DataPos, hintPos []byte, buf *bytebufferpool.ByteBuffer) {
 	var idx = 0
 	// Fid
 	idx += binary.PutUvarint(hintPos[idx:], uint64(pos.Fid))
@@ -144,7 +158,6 @@ func EncodeHintRecord(key []byte, pos *DataPos, hintPos []byte, buf *bytebufferp
 	// key
 	buf.B = append(buf.B, hintPos[:idx]...)
 	buf.B = append(buf.B, key...)
-	return buf.Bytes()
 }
 
 func DecodeHintRecord(buf []byte) ([]byte, *DataPos) {
@@ -182,10 +195,4 @@ func DecodeChunk(block []byte) ([]byte, ChunkType, error) {
 		return nil, 0, ErrInvalidCRC
 	}
 	return block[start:end], block[6], nil
-}
-
-func EncodeMergeFinRecord(id FileID) []byte {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, id)
-	return buf
 }

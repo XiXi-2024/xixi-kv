@@ -34,6 +34,7 @@ type DB struct {
 	reclaimSize     int64                         // 无效数据量, 单位字节
 	totalSize       int64                         // 数据文件总数据量, 单位字节
 	closedChan      chan struct{}                 // 用于控制后台持久化协程关闭的通道
+	recordPool      *sync.Pool                    // 记录结构体缓冲池
 	closed          bool                          // 数据库关闭标识
 }
 
@@ -96,6 +97,9 @@ func Open(options Options) (*DB, error) {
 		logRecordHeader: make([]byte, datafile.MaxLogRecordHeaderSize),
 		fileLock:        fileLock,
 		closedChan:      make(chan struct{}),
+		recordPool: &sync.Pool{New: func() interface{} {
+			return &datafile.LogRecord{}
+		}},
 	}
 
 	// 尝试加载 merge 临时目录中的数据文件
@@ -175,11 +179,15 @@ func (db *DB) Put(key []byte, value []byte) error {
 	}
 
 	// 构造日志记录实例
-	logRecord := &datafile.LogRecord{
-		Key:   key,
-		Value: value,
-		Type:  datafile.LogRecordNormal,
-	}
+	logRecord := db.recordPool.Get().(*datafile.LogRecord)
+	defer func() {
+		logRecord.Key = logRecord.Key[:0]
+		logRecord.Value = logRecord.Value[:0]
+		logRecord.Type, logRecord.BatchID = 0, 0
+		db.recordPool.Put(logRecord)
+	}()
+	logRecord.Key = append(logRecord.Key, key...)
+	logRecord.Value = append(logRecord.Value, value...)
 
 	// 将日志记录追加到当前活跃文件
 	pos, err := db.appendLogRecordWithLock(logRecord)
@@ -189,6 +197,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 
 	// 更新索引, 并维护无效数据量
 	if oldPos := db.index.Put(key, pos); oldPos != nil {
+		// todo 非并发安全
 		db.reclaimSize += int64(oldPos.Size)
 	}
 
@@ -197,19 +206,20 @@ func (db *DB) Put(key []byte, value []byte) error {
 
 // Get 根据 key 读取数据
 func (db *DB) Get(key []byte) ([]byte, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	// 校验 key 是否为 nil
 	if len(key) == 0 {
 		return nil, ErrKeyIsEmpty
 	}
 
 	// 从内存中获取 key 对应的索引数据
+	// 索引已能确保线程安全
 	logRecordPos := db.index.Get(key)
 	if logRecordPos == nil {
 		return nil, ErrKeyNotFound
 	}
 
+	db.mu.RLock()
+	defer db.mu.RUnlock()
 	// 获取 value 并返回
 	return db.getValueByPosition(logRecordPos)
 }
@@ -226,15 +236,23 @@ func (db *DB) Delete(key []byte) error {
 	}
 
 	// 构造 LogRecord 设置删除状态, 作为墓碑值追加到数据文件中
-	logRecord := &datafile.LogRecord{
-		Key:  key,
-		Type: datafile.LogRecordDeleted,
-	}
+	logRecord := db.recordPool.Get().(*datafile.LogRecord)
+	defer func() {
+		logRecord.Key = logRecord.Key[:0]
+		logRecord.Value = logRecord.Value[:0]
+		logRecord.Type, logRecord.BatchID = 0, 0
+		db.recordPool.Put(logRecord)
+	}()
+
+	logRecord.Key = append(logRecord.Key, key...)
+	logRecord.Type = datafile.LogRecordDeleted
+
 	pos, err := db.appendLogRecordWithLock(logRecord)
 	if err != nil {
 		return err
 	}
 	// 墓碑值本身可视为无效数据
+	// todo 非并发安全
 	db.reclaimSize += int64(pos.Size)
 
 	// 更新索引信息
@@ -243,6 +261,7 @@ func (db *DB) Delete(key []byte) error {
 		return ErrIndexUpdateFailed
 	}
 	if oldPos != nil {
+		// todo 非并发安全
 		db.reclaimSize += int64(oldPos.Size)
 	}
 
@@ -313,11 +332,6 @@ func (db *DB) Close() error {
 		return nil
 	}
 
-	// B+树索引实例实际是 DB 实例需要同步关闭, 否则下次重复打开导致报错
-	if err := db.index.Close(); err != nil {
-		return err
-	}
-
 	// 关闭当前活跃文件, 自动持久化
 	if err := db.activeFile.Close(); err != nil {
 		return err
@@ -349,15 +363,16 @@ func (db *DB) Sync() error {
 
 // 将日志记录追加到当前活跃文件, 加锁
 func (db *DB) appendLogRecordWithLock(logRecord *datafile.LogRecord) (*datafile.DataPos, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	return db.appendLogRecord(logRecord)
 }
 
 // 将日志记录追加到当前活跃文件
 func (db *DB) appendLogRecord(logRecord *datafile.LogRecord) (*datafile.DataPos, error) {
 	// 活跃文件剩余空间不足, 新建数据文件作为新的活跃文件
-	if db.activeFile.Size() > db.options.DataFileSize {
+	maxSize := datafile.GetMaxDataSize(len(logRecord.Key), len(logRecord.Value))
+	if db.activeFile.Size()+int64(maxSize) > db.options.DataFileSize {
 		if err := db.sync(); err != nil {
 			return nil, err
 		}
@@ -408,12 +423,12 @@ func (db *DB) sync() error {
 // 创建并设置新活跃文件
 func (db *DB) setActiveDataFile() error {
 	// 通过原活跃文件id自增获取新的文件id
-	var initialFileId uint32 = 0
+	var fileID uint32 = 0
 	if db.activeFile != nil {
-		initialFileId = db.activeFile.ID + 1
+		fileID = db.activeFile.ID + 1
 	}
 	// 创建并打开新的数据文件
-	dataFile, err := datafile.OpenFile(db.options.DirPath, initialFileId, datafile.DataFileSuffix, db.options.FileIOType)
+	dataFile, err := datafile.OpenFile(db.options.DirPath, fileID, datafile.DataFileSuffix, db.options.FileIOType)
 	if err != nil {
 		return err
 	}
@@ -577,20 +592,14 @@ func (db *DB) getValueByPosition(logRecordPos *datafile.DataPos) ([]byte, error)
 	if dataFile == nil {
 		return nil, ErrDataFileNotFound
 	}
-
 	// 根据偏移读取对应的数据
-	logRecord, err := dataFile.ReadLogRecord(logRecordPos)
+	value, err := dataFile.ReadRecordValue(logRecordPos)
+
 	if err != nil {
 		return nil, err
 	}
 
-	// 判断是否已被删除
-	// 当索引删除失败时, 可能导致索引非 nil 而日志记录标记已删除的情况
-	if logRecord.Type == datafile.LogRecordDeleted {
-		return nil, ErrKeyNotFound
-	}
-
-	return logRecord.Value, nil
+	return value, nil
 }
 
 // 解析 key, 提取真实 key 和 seq 事务前缀

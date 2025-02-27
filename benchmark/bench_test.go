@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-var n = 10000000
+var n = 20000000
 var keys [][]byte
 var value []byte
 
@@ -21,32 +21,84 @@ func init() {
 
 func BenchmarkDB_Put(b *testing.B) {
 	db, dir := getDataAndDir()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(dir)
+	}()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = db.Put(keys[i], value)
 	}
 	b.StopTimer()
-	_ = db.Close()
-	_ = os.RemoveAll(dir)
+}
+
+func BenchmarkDB_Put_Parallel(b *testing.B) {
+	db, dir := getDataAndDir()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(dir)
+	}()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		idx := 0
+		for pb.Next() {
+			_ = db.Put(keys[idx], value)
+			idx++
+		}
+	})
+
+	b.StopTimer()
 }
 
 func BenchmarkDB_Get(b *testing.B) {
 	db, dir := getDataAndDir()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(dir)
+	}()
 	for i := 0; i < b.N; i++ {
 		_ = db.Put(keys[i], value)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = db.Get(utils.GetTestKey(i))
+		_, _ = db.Get(keys[i])
 	}
-	_ = db.Close()
-	_ = os.RemoveAll(dir)
+	b.StopTimer()
+}
+
+func BenchmarkDB_Get_Parallel(b *testing.B) {
+	db, dir := getDataAndDir()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(dir)
+	}()
+	for i := 0; i < b.N; i++ {
+		_ = db.Put(keys[i], value)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		idx := 0
+		for pb.Next() {
+			_, _ = db.Get(keys[idx])
+			idx++
+		}
+	})
+
+	b.StopTimer()
 }
 
 func BenchmarkDB_Delete(b *testing.B) {
 	db, dir := getDataAndDir()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(dir)
+	}()
 	for i := 0; i < b.N; i++ {
 		_ = db.Put(keys[i], value)
 	}
@@ -55,8 +107,30 @@ func BenchmarkDB_Delete(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = db.Delete(keys[i])
 	}
-	_ = db.Close()
-	_ = os.RemoveAll(dir)
+	b.StopTimer()
+}
+
+func BenchmarkDB_Delete_Parallel(b *testing.B) {
+	db, dir := getDataAndDir()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(dir)
+	}()
+	for i := 0; i < b.N; i++ {
+		_ = db.Put(keys[i], value)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		idx := 0
+		for pb.Next() {
+			_ = db.Delete(keys[idx])
+			idx++
+		}
+	})
+
+	b.StopTimer()
 }
 
 func BenchmarkBatch_Put(b *testing.B) {

@@ -3,7 +3,7 @@
 
 English | [简体中文](README_CN.md)
 
-xixi-kv is a lightweight key-logRecord storage engine based on the Bitcask model, featuring low-latency read/writeSingle operations, high throughput, and the ability to store data volumes exceeding available memory.
+xixi-kv is a lightweight key-logRecord storage engine based on the Bitcask model, featuring low-latency readToBuf/writeSingle operations, high throughput, and the ability to store data volumes exceeding available memory.
 
 ### Features
 - Supports multiple idx implementations including B-Tree, persistent B+ Tree, and adaptive radix tree, allowing users to balance operational efficiency with storage capacity based on their needs.

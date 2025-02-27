@@ -50,7 +50,7 @@ var DefaultOptions = Options{
 	SyncStrategy:          No,
 	BytesPerSync:          1024 * 1024,
 	EnableBackgroundMerge: false,
-	IndexType:             index.HashMap,
+	IndexType:             index.BTree,
 	ShardNum:              16,
 	FileIOType:            fio.StandardFIO,
 	DataFileMergeRatio:    0.5,

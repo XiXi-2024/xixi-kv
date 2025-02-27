@@ -150,15 +150,15 @@ func TestDB_Delete(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, val3, value3)
 
-	// 5.重启
-	key5, value5 := utils.GetTestKey(55), utils.RandomValue(128)
-	err = db.Put(key5, value5)
+	// 4.重启
+	key4, value4 := utils.GetTestKey(55), utils.RandomValue(128)
+	err = db.Put(key4, value4)
 	assert.Nil(t, err)
-	val5, err := db.Get(key5)
+	val4, err := db.Get(key4)
 	assert.Nil(t, err)
-	assert.NotNil(t, val5)
-	assert.Equal(t, val5, value5)
-	err = db.Delete(key5)
+	assert.NotNil(t, val4)
+	assert.Equal(t, val4, value4)
+	err = db.Delete(key4)
 	assert.Nil(t, err)
 
 	err = db.Close()
@@ -168,14 +168,14 @@ func TestDB_Delete(t *testing.T) {
 	assert.NotNil(t, db)
 
 	// 原先存在
-	val5, err = db.Get(key3)
+	val5, err := db.Get(key3)
 	assert.Nil(t, err)
 	assert.NotNil(t, val5)
 	assert.Equal(t, val5, value3)
 
 	// 原先已删除
-	val5, err = db.Get(key5)
-	assert.Equal(t, 0, len(val5))
+	val6, err := db.Get(key4)
+	assert.Equal(t, 0, len(val6))
 	assert.Equal(t, ErrKeyNotFound, err)
 }
 

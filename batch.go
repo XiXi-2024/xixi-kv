@@ -18,14 +18,15 @@ const (
 
 // Batch 批处理操作客户端
 type Batch struct {
-	db         *DB
-	staged     []*datafile.LogRecord // 暂存数据, 数组存储保证添加顺序
-	stageIndex map[uint64][]int      // 加快暂存数据查询效率
-	options    BatchOptions          // 批处理配置
-	mu         sync.RWMutex          // 批处理互斥锁, 保证批处理本身并发安全
-	committed  bool                  // 已提交标识
-	batchID    snowflake.ID          // 批次唯一ID
-	dataSize   int64                 // 当前累计数据量
+	db            *DB
+	staged        []*datafile.LogRecord // 暂存数据, 数组存储保证添加顺序
+	stageIndex    map[uint64][]int      // 加快暂存数据查询效率
+	options       BatchOptions          // 批处理配置
+	mu            sync.RWMutex          // 批处理互斥锁, 保证批处理本身并发安全
+	committed     bool                  // 已提交标识
+	batchID       snowflake.ID          // 批次唯一ID
+	logRecordPool sync.Pool             // 记录结构体复用缓冲池
+	dataSize      int64                 // 当前累计数据量
 }
 
 func (db *DB) NewBatch(options BatchOptions) *Batch {
@@ -36,6 +37,11 @@ func (db *DB) NewBatch(options BatchOptions) *Batch {
 		db:        db,
 		options:   options,
 		committed: false,
+		logRecordPool: sync.Pool{
+			New: func() interface{} {
+				return &datafile.LogRecord{}
+			},
+		},
 	}
 	node, err := snowflake.NewNode(1)
 	if err != nil {
@@ -50,33 +56,54 @@ func (b *Batch) Put(key []byte, value []byte) error {
 		return ErrKeyIsEmpty
 	}
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.committed {
 		return ErrBatchCommitted
 	}
 	logRecord := b.findPendingRecord(key)
 	if logRecord == nil {
-		logRecord = &datafile.LogRecord{
-			Key:   key,
-			Value: value,
-			Type:  datafile.LogRecordNormal,
+		logRecord = b.logRecordPool.Get().(*datafile.LogRecord)
+		logRecord.Key = key
+		logRecord.Value = value
+		logRecord.Type = datafile.LogRecordNormal
+		size := int64(datafile.GetMaxDataSize(len(key), len(value)))
+		if b.dataSize+size > b.db.options.DataFileSize {
+			if err := b.FlushStaged(); err != nil {
+				return fmt.Errorf("flush staged failed: %v", err)
+			}
+			// 更新数据文件
+			err := b.db.sync()
+			if err != nil {
+				return fmt.Errorf("sync failed: %v", err)
+			}
 		}
-		b.dataSize += int64(datafile.GetMaxDataSize(logRecord))
+		b.dataSize += size
 		b.addPendingRecord(key, logRecord)
-		b.mu.Unlock()
 		return nil
 	} else {
-		oldSize := int64(datafile.GetMaxDataSize(logRecord))
-		logRecord.Type = datafile.LogRecordNormal
-		// 内存复用
-		logRecord.Key = append(logRecord.Key[:0], key...)
-		logRecord.Value = append(logRecord.Value[:0], value...)
-		newSize := int64(datafile.GetMaxDataSize(logRecord))
+		oldSize := int64(datafile.GetMaxDataSize(len(logRecord.Key), len(logRecord.Value)))
+		newSize := int64(datafile.GetMaxDataSize(len(key), len(value)))
 		if b.dataSize+newSize-oldSize+maxFinRecord > b.db.options.DataFileSize {
 			if err := b.FlushStaged(); err != nil {
 				return fmt.Errorf("flush staged failed: %v", err)
 			}
+			// 更新数据文件
+			err := b.db.sync()
+			if err != nil {
+				return fmt.Errorf("sync failed: %v", err)
+			}
+			// 由于原 logRecord 已归还, 重新获取
+			logRecord = b.logRecordPool.Get().(*datafile.LogRecord)
+			logRecord.Type = datafile.LogRecordNormal
+			logRecord.Key = key
+			logRecord.Value = value
+			b.addPendingRecord(key, logRecord)
+			b.dataSize += newSize
+		} else {
+			logRecord.Key = key
+			logRecord.Value = value
+			b.dataSize += newSize - oldSize
 		}
-		b.dataSize += newSize - oldSize
 	}
 	return nil
 }
@@ -109,16 +136,12 @@ func (b *Batch) Get(key []byte) ([]byte, error) {
 	if pos == nil {
 		return nil, ErrKeyNotFound
 	}
-	logRecord, err := b.db.activeFile.ReadLogRecord(pos)
+	value, err := b.db.activeFile.ReadRecordValue(pos)
 	if err != nil {
 		return nil, err
 	}
 
-	if logRecord.Type == datafile.LogRecordDeleted {
-		panic("Deleted data cannot exist in the index")
-	}
-
-	return logRecord.Value, nil
+	return value, nil
 }
 
 func (b *Batch) Delete(key []byte) error {
@@ -146,7 +169,7 @@ func (b *Batch) Delete(key []byte) error {
 		Type: datafile.LogRecordDeleted,
 	}
 	// 如果当前数据文件不足以容纳暂存数据, 进行一次刷新
-	size := int64(datafile.GetMaxDataSize(logRecord))
+	size := int64(datafile.GetMaxDataSize(len(key), 0))
 	if b.dataSize+size+maxFinRecord > b.db.options.DataFileSize {
 		if err := b.FlushStaged(); err != nil {
 			return fmt.Errorf("flush staged failed: %v", err)
@@ -177,10 +200,10 @@ func (b *Batch) Commit() error {
 	}
 
 	// 追加批处理完成标识记录
-	_, err = b.db.activeFile.WriteLogRecord(&datafile.LogRecord{
-		Key:  b.batchID.Bytes(),
-		Type: datafile.LogRecordBatchFinished,
-	}, b.db.logRecordHeader)
+	logRecord := b.logRecordPool.Get().(*datafile.LogRecord)
+	logRecord.Key = b.batchID.Bytes()
+	logRecord.Type = datafile.LogRecordBatchFinished
+	_, err = b.db.activeFile.WriteLogRecord(logRecord, b.db.logRecordHeader)
 
 	if err != nil {
 		return err
@@ -223,6 +246,8 @@ func (b *Batch) FlushStaged() error {
 	for _, record := range b.staged {
 		record.BatchID = uint64(b.batchID)
 		b.db.activeFile.WriteStagedLogRecord(record, b.db.logRecordHeader)
+		// 写入完成后放回缓冲池
+		b.logRecordPool.Put(record)
 	}
 
 	// IO 层面将所有数据字节一次性写入
