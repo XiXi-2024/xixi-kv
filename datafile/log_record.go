@@ -55,7 +55,6 @@ type LogRecord struct {
 
 // DataPos 数据记录的起始索引
 // 当一条数据记录过大时, 会被分割为多个 chunk 存储
-// todo 优化点：索引字段私有化
 type DataPos struct {
 	Fid     FileID // 数据文件 ID, 定位 LogRecord 所在文件
 	BlockID uint32 // Block ID, 定位 LogRecord 所在 Block
@@ -141,7 +140,10 @@ func DecodeLogRecordValue(data []byte) []byte {
 	if valueSize == 0 {
 		return nil
 	}
-	return data[idx+int(keySize):]
+
+	value := make([]byte, valueSize)
+	copy(value, data[idx+int(keySize):idx+int(keySize)+int(valueSize)])
+	return value
 }
 
 func EncodeHintRecord(key []byte, pos *DataPos, hintPos []byte, buf *bytebufferpool.ByteBuffer) {

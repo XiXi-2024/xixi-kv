@@ -23,6 +23,8 @@ type ReadWriter interface {
 
 	Sync() error
 
+	// Close 关闭文件
+	// 关闭之前默认进行持久化
 	Close() error
 
 	Size() (int64, error)

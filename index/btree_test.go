@@ -53,16 +53,14 @@ func TestBTree_delete(t *testing.T) {
 	res1 := bt.put(nil, &datafile.DataPos{Fid: 1, Offset: 100})
 	assert.Nil(t, res1)
 	// 删除 key 为 nil 的元素
-	res2, ok1 := bt.delete(nil)
-	assert.True(t, ok1)
+	res2 := bt.delete(nil)
 	assert.Equal(t, res2.Fid, uint32(1))
 	assert.Equal(t, res2.Offset, uint32(100))
 
 	res3 := bt.put([]byte("aaa"), &datafile.DataPos{Fid: 22, Offset: 33})
 	assert.Nil(t, res3)
 	// 删除正常元素
-	res4, ok2 := bt.delete([]byte("aaa"))
-	assert.True(t, ok2)
+	res4 := bt.delete([]byte("aaa"))
 	assert.Equal(t, res4.Fid, uint32(22))
 	assert.Equal(t, res4.Offset, uint32(33))
 }

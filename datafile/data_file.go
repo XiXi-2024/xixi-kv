@@ -29,6 +29,7 @@ const (
 )
 
 // DataFile 数据文件
+// todo 优化点：文件层实现同步措施, 最小化锁粒度
 type DataFile struct {
 	ID             FileID                       // 文件 id
 	ReadWriter     fio.ReadWriter               // IO 实现

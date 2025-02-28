@@ -164,6 +164,7 @@ func Open(options Options) (*DB, error) {
 }
 
 // Backup 数据库备份
+// todo 优化点：mmap实现时数据文件大小不正确
 func (db *DB) Backup(dir string) error {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
@@ -181,7 +182,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 	// 构造日志记录实例
 	logRecord := db.recordPool.Get().(*datafile.LogRecord)
 	defer db.putRecordToPool(logRecord)
-	logRecord.Key = append(logRecord.Key, key...)
+	logRecord.Key = key
 	logRecord.Value = append(logRecord.Value, value...)
 
 	// 将日志记录追加到当前活跃文件
@@ -231,7 +232,7 @@ func (db *DB) Delete(key []byte) error {
 	logRecord := db.recordPool.Get().(*datafile.LogRecord)
 	defer db.putRecordToPool(logRecord)
 
-	logRecord.Key = append(logRecord.Key, key...)
+	logRecord.Key = key
 	logRecord.Type = datafile.LogRecordDeleted
 
 	pos, err := db.appendLogRecordWithLock(logRecord)
@@ -386,9 +387,9 @@ func (db *DB) appendLogRecord(logRecord *datafile.LogRecord) (*datafile.DataPos,
 func (db *DB) sync() error {
 	// 持久化原活跃文件
 	if err := db.activeFile.Sync(); err != nil {
-		db.bytesWrite = 0
 		return err
 	}
+	db.bytesWrite = 0
 
 	// 将原活跃文件转换为旧数据文件
 	db.olderFiles[db.activeFile.ID] = db.activeFile
