@@ -9,17 +9,10 @@ import (
 	"path/filepath"
 )
 
-const (
-	// merge临时目录名称后缀
-	mergeDirName = "-merge"
-
-	// merge完成标识文件中的未参与 merge 的最近文件key
-	mergeFinishedKey = "merge.finished"
-)
+// merge临时目录名称后缀
+const mergeDirName = "-merge"
 
 // Merge 立即执行 Merge 过程
-// todo 扩展点：新增定时任务和清除策略配置项, 监控数据状态, 进行自动清理
-// todo 优化点：使用性能更高的 merge 方法
 func (db *DB) Merge() error {
 	// 校验数据是否为空
 	if db.activeFile == nil {
@@ -60,7 +53,7 @@ func (db *DB) Merge() error {
 	db.mu.Unlock()
 
 	// 获取 merge 临时目录路径
-	mergePath := db.getMergePath()
+	mergePath := db.mergePath()
 	// 如果存在上次 merge 的残留目录, 将其删除
 	if _, err := os.Stat(mergePath); err == nil {
 		if err := os.RemoveAll(mergePath); err != nil {
@@ -83,7 +76,7 @@ func (db *DB) Merge() error {
 		olderFiles:      make(map[uint32]*datafile.DataFile),
 		logRecordHeader: make([]byte, datafile.MaxLogRecordHeaderSize),
 	}
-	if err := mergeDB.setActiveDataFile(); err != nil {
+	if err := mergeDB.setActiveFile(); err != nil {
 		return nil
 	}
 
@@ -180,8 +173,7 @@ func (db *DB) mergeCheck() error {
 }
 
 // 获取 merge 临时目录路径, 与数据目录同级
-// todo 优化点：重构为独立函数, 方便测试
-func (db *DB) getMergePath() string {
+func (db *DB) mergePath() string {
 	// 获取数据目录的父目录路径
 	dir := filepath.Dir(filepath.Clean(db.options.DirPath))
 	// 获取数据目录名称
@@ -190,88 +182,69 @@ func (db *DB) getMergePath() string {
 }
 
 // 尝试加载 merge 临时目录
-// todo 优化点：重构为独立函数, 方便测试
 func (db *DB) loadMergeFiles() (uint32, error) {
-	mergePath := db.getMergePath()
-	// 未进行过 merge
-	if _, err := os.Stat(mergePath); os.IsNotExist(err) {
+	mergePath := db.mergePath()
+	// 如果 merge 目录不存在或其他错误则执行正常加载流程
+	if _, err := os.Stat(mergePath); err != nil {
+		return 0, nil
+	}
+
+	// 尝试从标识文件中取出未参与 merge 的最近数据文件 id
+	mergeID := db.getNonMergeFileID(mergePath)
+	// 标识文件不存在同样执行正常加载流程
+	if mergeID == 0 {
 		return 0, nil
 	}
 
 	defer func() {
-		// 加载完成后删除临时目录
+		// 加载完成后删除 merge 目录
 		_ = os.RemoveAll(mergePath)
 	}()
 
-	// todo 优化点：重构执行逻辑
-	// 直接省略遍历操作, 打开 merge 完成标识文件
-	// 当 merge 失败时, 返回的 merge id为 0，不会遍历数据文件
-	// 读取目录中所有文件
-	dirEntries, err := os.ReadDir(mergePath)
-	if err != nil {
-		return 0, err
-	}
-
-	// 是否存在 merge 完成文件标识
-	var mergeFinished bool
-	// 参与 merge 的数据文件、Hint文件的名称集合
-	var mergeFileNames []string
-	for _, entry := range dirEntries {
-		if entry.Name() == datafile.MergeFinishedFileSuffix {
-			mergeFinished = true
-		}
-		// 过滤文件锁文件
-		if entry.Name() == datafile.FileLockSuffix {
-			continue
-		}
-		mergeFileNames = append(mergeFileNames, entry.Name())
-	}
-
-	// merge 未完成
-	if !mergeFinished {
-		return 0, nil
-	}
-
-	// 从标识文件中取出未参与 merge 的最近数据文件 id
-	nonMergeFileId, err := db.getNonMergeFileId(mergePath)
-	if err != nil {
-		return 0, err
-	}
-
-	// 数据目录中删除参与 merge 的旧数据文件
-	// todo 优化点：一次遍历同时执行删除和移动操作(可提取为临时函数), 后序单独处理hint文件
-	var fileId uint32 = 0
-	for ; fileId < nonMergeFileId; fileId++ {
-		// 获取完整数据文件名称
-		fileName := datafile.GetFileName(db.options.DirPath, fileId, datafile.DataFileSuffix)
-		// 如果存在则删除
-		if _, err := os.Stat(fileName); err == nil {
-			if err := os.Remove(fileName); err != nil {
+	// 处理经过重写的数据文件, 处理中途失败需返回错误
+	for fileID := uint32(0); fileID < mergeID; fileID++ {
+		// 删除原数据文件
+		destName := datafile.GetFileName(db.options.DirPath, fileID, datafile.DataFileSuffix)
+		var exist bool
+		if _, err := os.Stat(destName); err == nil {
+			if err = os.Remove(destName); err != nil {
 				return 0, err
 			}
+			exist = true
 		}
-	}
-
-	// 将重写的数据文件和 hint 文件移动到数据目录中
-	for _, fileName := range mergeFileNames {
-		srcPath := filepath.Join(mergePath, fileName)
-		destPath := filepath.Join(db.options.DirPath, fileName)
-		if err := os.Rename(srcPath, destPath); err != nil {
+		// 将重写的数据文件移动到数据目录中
+		srcFile := datafile.GetFileName(mergePath, fileID, datafile.DataFileSuffix)
+		if _, err := os.Stat(srcFile); err != nil {
+			// 如果原数据文件不存在, 则允许重写文件不存在
+			if !exist && os.IsNotExist(err) {
+				continue
+			}
+			return 0, err
+		}
+		if err := os.Rename(srcFile, destName); err != nil {
 			return 0, err
 		}
 	}
 
-	return nonMergeFileId, nil
+	// 移动对应的 hint 文件, 移动失败应当返回错误
+	srcHintFile := datafile.GetFileName(mergePath, 0, datafile.HintFileSuffix)
+	destHintFile := datafile.GetFileName(db.options.DirPath, 0, datafile.HintFileSuffix)
+	if _, err := os.Stat(srcHintFile); err != nil {
+		return 0, err
+	}
+	if err := os.Rename(srcHintFile, destHintFile); err != nil {
+		return 0, err
+	}
+
+	return mergeID, nil
 }
 
 // 获取 merge 完成标识文件中保存的未参与 merge 的最近数据文件id
-// todo 优化点：重构为独立函数, 方便测试
-func (db *DB) getNonMergeFileId(path string) (datafile.FileID, error) {
-	mergeFinishedFile, err := datafile.OpenFile(path, 0, datafile.MergeFinishedFileSuffix, fio.StandardFIO)
+// 返回 0 表示读取失败
+func (db *DB) getNonMergeFileID(dirPath string) datafile.FileID {
+	mergeFinishedFile, err := datafile.OpenFile(dirPath, 0, datafile.MergeFinishedFileSuffix, fio.StandardFIO)
 	if err != nil {
-		// todo 优化点：返回nil
-		// 如果打开失败则说明 merge 失败, 返回 nil 即可
-		return 0, err
+		return 0
 	}
 	return mergeFinishedFile.ReadMergeFinRecord()
 }

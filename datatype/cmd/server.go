@@ -49,7 +49,6 @@ func (svr *BitcaskServer) accept(conn redcon.Conn) bool {
 	svr.mu.Lock()
 	defer svr.mu.Unlock()
 	cli.server = svr
-	// todo 仅选择首个 db 实例
 	cli.db = svr.dbs[0]
 	// 设置为上下文
 	conn.SetContext(cli)

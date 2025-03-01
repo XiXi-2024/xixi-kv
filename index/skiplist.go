@@ -70,8 +70,7 @@ func (s *skipListIndex) close() error {
 }
 
 type skipListIterator struct {
-	reverse bool // 是否降序遍历 todo 扩展点：转换为配置项成员
-	// todo 优化点：采取效率更高的迭代方式
+	reverse  bool    // 是否降序遍历
 	curIndex int     // 当前遍历的下标位置
 	values   []*item // 类型复用, 存放 key + 位置索引信息
 }

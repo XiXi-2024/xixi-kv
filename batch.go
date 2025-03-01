@@ -9,8 +9,6 @@ import (
 	"sync"
 )
 
-// todo 优化点：新增方法结束自动提交的事务形式
-
 const (
 	// 批处理完成标识记录最大字节长度
 	maxFinRecord = 70

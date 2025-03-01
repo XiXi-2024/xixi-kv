@@ -6,7 +6,6 @@ const DataFilePerm = 0644
 
 var ErrTypeUnsupported = errors.New("unsupported io type")
 
-// todo 扩展点：新增缓冲IO实现
 type FileIOType = byte
 
 const (
