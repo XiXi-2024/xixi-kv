@@ -432,7 +432,7 @@ func (df *DataFile) Size() int64 {
 }
 
 func (df *DataFile) Sync() error {
-	if !df.closed {
+	if df.closed {
 		return nil
 	}
 	return df.ReadWriter.Sync()

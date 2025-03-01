@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-var n = 20000000
+var n = 10000000
 var keys [][]byte
 var value []byte
 

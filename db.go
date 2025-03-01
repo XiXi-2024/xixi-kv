@@ -164,10 +164,25 @@ func Open(options Options) (*DB, error) {
 }
 
 // Backup 数据库备份
-// todo 优化点：mmap实现时数据文件大小不正确
 func (db *DB) Backup(dir string) error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	if db.activeFile == nil {
+		return nil
+	}
+
+	// 如果使用 mmap IO实现, 需要先将所有文件大小更新为真实大小
+	if db.options.FileIOType == fio.MemoryMap {
+		if err := db.activeFile.ReadWriter.(*fio.MMap).ResetFileSize(); err != nil {
+			return err
+		}
+		for _, file := range db.olderFiles {
+			if err := file.ReadWriter.(*fio.MMap).ResetFileSize(); err != nil {
+				return err
+			}
+		}
+	}
 	// 将数据目录中的数据文件拷贝到指定目录中
 	return utils.CopyDir(db.options.DirPath, dir, []string{datafile.FileLockSuffix})
 }
@@ -549,9 +564,6 @@ func checkOptions(options Options) error {
 	}
 	if options.DataFileMergeRatio < 0 || options.DataFileMergeRatio > 1 {
 		return errors.New("invalid merge ratio, must between 0 and 1")
-	}
-	if options.FileIOType == fio.MemoryMap && options.DataFileSize > 512*1024*1024 {
-		return errors.New("memory map datafile size should not exceed 512MB")
 	}
 	if options.BytesPerSync > 16*1024*1024 {
 		return errors.New("BytesPerSync should not exceed 16MB")

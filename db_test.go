@@ -319,7 +319,6 @@ func TestDB_Stat(t *testing.T) {
 	assert.Equal(t, 1, stat.DataFileNum)
 }
 
-// todo bug: mmap实现
 func TestDB_Backup(t *testing.T) {
 	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-backup")
@@ -328,21 +327,21 @@ func TestDB_Backup(t *testing.T) {
 	db1, err := Open(opts)
 	assert.Nil(t, err)
 	assert.NotNil(t, db1)
-	defer destroyDB(db1)
-
 	value := utils.RandomValue(128)
 	for i := 1; i < 1000; i++ {
 		err := db1.Put(utils.GetTestKey(i), value)
 		assert.Nil(t, err)
 	}
-
 	backupDir, _ := os.MkdirTemp("", "bitcask-go-backup-test")
 	err = db1.Backup(backupDir)
 	assert.Nil(t, err)
+	defer destroyDB(db1)
+
 	opts.DirPath = backupDir
 	db2, err := Open(opts)
 	assert.Nil(t, err)
 	assert.NotNil(t, db2)
+	defer destroyDB(db2)
 	for i := 1; i < 1000; i++ {
 		val, err := db2.Get(utils.GetTestKey(i))
 		assert.Nil(t, err)
