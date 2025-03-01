@@ -34,13 +34,13 @@ func (m *hashMapIndex) get(key []byte) *datafile.DataPos {
 	return oldPos
 }
 
-func (m *hashMapIndex) delete(key []byte) (*datafile.DataPos, bool) {
+func (m *hashMapIndex) delete(key []byte) *datafile.DataPos {
 	if m.mp == nil {
-		return nil, false
+		return nil
 	}
 	oldPos := m.mp[string(key)]
 	delete(m.mp, string(key))
-	return oldPos, true
+	return oldPos
 }
 
 func (m *hashMapIndex) size() int {

@@ -52,16 +52,14 @@ func TestShardedIndex_Delete(t *testing.T) {
 	index := NewShardedIndex(BTree, 16)
 
 	// 测试删除不存在的key
-	pos, ok := index.Delete([]byte("not_exist"))
-	assert.False(t, ok)
+	pos := index.Delete([]byte("not_exist"))
 	assert.Nil(t, pos)
 
 	// 测试删除存在的key
 	key := []byte("test_key")
 	pos1 := createDataPos(1, 100, 200)
 	index.Put(key, pos1)
-	pos2, ok := index.Delete(key)
-	assert.True(t, ok)
+	pos2 := index.Delete(key)
 	assert.Equal(t, pos1, pos2)
 
 	// 验证删除后无法获取
@@ -112,8 +110,7 @@ func TestShardedIndex_Close(t *testing.T) {
 	key := utils.GetTestKey(0)
 	assert.Nil(t, index.Get(key))
 	assert.Nil(t, index.Put(key, createDataPos(1, 0, 0)))
-	pos, ok := index.Delete(key)
-	assert.False(t, ok)
+	pos := index.Delete(key)
 	assert.Nil(t, pos)
 	assert.Equal(t, 0, index.Size())
 }

@@ -37,12 +37,9 @@ type IteratorOptions struct {
 	Reverse bool
 }
 
-// WriteBatchOptions 批量写入配置项
-type WriteBatchOptions struct {
-	// 单个批次最大日志记录数量
-	MaxBatchNum uint
-	// 提交事务时是否立即持久化
-	SyncWrites bool
+// BatchOptions 批处理操作配置项
+type BatchOptions struct {
+	Sync bool // 刷新时是否理解持久化
 }
 
 // DefaultOptions 默认Options, 供示例程序使用
@@ -54,7 +51,7 @@ var DefaultOptions = Options{
 	EnableBackgroundMerge: false,
 	IndexType:             index.HashMap,
 	ShardNum:              16,
-	FileIOType:            fio.MemoryMap,
+	FileIOType:            fio.StandardFIO,
 	DataFileMergeRatio:    0.5,
 }
 
@@ -64,8 +61,7 @@ var DefaultIteratorOptions = IteratorOptions{
 	Reverse: false,
 }
 
-// DefaultWriteBatchOptions 默认事务 Options, 供测试使用
-var DefaultWriteBatchOptions = WriteBatchOptions{
-	MaxBatchNum: 10000,
-	SyncWrites:  true,
+// DefaultBatchOptions 默认事务 Options, 供测试使用
+var DefaultBatchOptions = BatchOptions{
+	Sync: false,
 }

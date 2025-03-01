@@ -81,13 +81,19 @@ func (db *DB) Merge() error {
 	mergeDB := &DB{
 		options:         mergeOptions,
 		olderFiles:      make(map[uint32]*datafile.DataFile),
-		logRecordHeader: make([]byte, datafile.MaxChunkHeaderSize),
+		logRecordHeader: make([]byte, datafile.MaxLogRecordHeaderSize),
+	}
+	if err := mergeDB.setActiveDataFile(); err != nil {
+		return nil
 	}
 
 	// 在 merge 临时目录创建并打开 hint 索引文件
 	hintFile, err := datafile.OpenFile(mergePath, 0, datafile.HintFileSuffix, db.options.FileIOType)
 	if err != nil {
 		return err
+	}
+	if db.hintPos == nil {
+		db.hintPos = make([]byte, datafile.MaxLogRecordPosSize)
 	}
 
 	// 执行 merge
@@ -102,21 +108,17 @@ func (db *DB) Merge() error {
 				}
 				return err
 			}
-			// 解析得到真实key
-			realKey, _ := parseLogRecordKey(logRecord.Key)
-			pos := db.index.Get(realKey)
-			// 与内存中的最新数据比较, 判断是否为有效数据
+			// 比较内存中索引的最新数据, 判断是否为有效数据
+			pos := db.index.Get(logRecord.Key)
 			if pos != nil && pos.Fid == dataFile.ID &&
 				pos.Offset == logRecordPos.Offset && pos.BlockID == logRecordPos.BlockID {
-				// 对于有效数据, 无论是否携带事务标记都表示事务已成功, 直接清除
-				logRecord.Key = logRecordKeyWithSeq(realKey, nonTransactionSeqNo)
 				// 将数据重写到 merge 临时目录中
 				pos, err := mergeDB.appendLogRecord(logRecord)
 				if err != nil {
 					return err
 				}
 				// merge的过程中顺便将构建索引所需信息写入 Hint 文件中, 用于后续重启时加速构建索引
-				if err := hintFile.WriteHintRecord(realKey, pos); err != nil {
+				if err := hintFile.WriteHintRecord(logRecord.Key, db.hintPos, pos); err != nil {
 					return err
 				}
 			}

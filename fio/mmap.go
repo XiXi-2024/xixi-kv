@@ -1,109 +1,141 @@
 package fio
 
 import (
-	"errors"
+	"fmt"
 	"github.com/edsrzf/mmap-go"
 	"io"
 	"os"
+	"unsafe"
 )
 
-var ErrFileHasBeenClosed = errors.New("file has been closed")
+// 32位系统上映射区域至多为 2G, 可能发生溢出
 
-// 选择 mmap 类型 IO 实现时处理数据量不应过大, 且数据文件容量配置参数难以传递
-// 故设置映射空间为 512MB, 由上层保证该 IO 实现下的配置限制
-const dataFileSize = 512 * 1024 * 1024
+const (
+	blockSize = 512 * 1024 * 1024
+)
 
-// MMap 内存文件映射 IO 实现
-// todo 扩展点：预读机制
-// todo 扩展点：批量读写机制
 type MMap struct {
-	file   *os.File
-	data   mmap.MMap
-	offset int64
+	file        *os.File
+	activeMap   mmap.MMap // 当前活动映射区域
+	endOff      int64     // 当前映射区域的右边界
+	virtualSize int64     // 虚拟文件大小
 }
 
 func NewMMap(fileName string) (*MMap, error) {
-	fd, err := os.OpenFile(
-		fileName,
-		os.O_CREATE|os.O_RDWR|os.O_APPEND,
-		DataFilePerm,
-	)
+	fd, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, DataFilePerm)
 	if err != nil {
 		return nil, err
 	}
-	info, err := fd.Stat()
+
+	stat, err := fd.Stat()
 	if err != nil {
 		return nil, err
 	}
-	offset := info.Size()
-	err = fd.Truncate(dataFileSize)
-	if err != nil {
-		return nil, err
-	}
-	data, err := mmap.Map(fd, mmap.RDWR, 0)
+
 	m := &MMap{
-		file:   fd,
-		data:   data,
-		offset: offset,
+		file:        fd,
+		virtualSize: stat.Size(),
 	}
-	return m, err
+
+	err = m.remap(m.virtualSize, blockSize)
+	if err != nil {
+		_ = fd.Close()
+		return nil, err
+	}
+
+	return m, nil
 }
 
-func (mmap *MMap) Read(b []byte, offset int64) (int, error) {
-	if mmap.file == nil {
-		return 0, ErrFileHasBeenClosed
-	}
-	// 计算实际可读取的字节数
-	bytes := min(len(b), int(mmap.offset-offset))
-	if bytes == 0 {
+func (m *MMap) Read(b []byte, offset int64) (int, error) {
+	// 检查边界
+	if offset >= m.virtualSize {
 		return 0, io.EOF
 	}
-	copy(b[:bytes], mmap.data[offset:])
-	return bytes, nil
+
+	if err := m.remap(offset, len(b)); err != nil {
+		return 0, err
+	}
+
+	// 计算实际可读范围
+	readEnd := offset + int64(len(b))
+	if readEnd > m.virtualSize {
+		readEnd = m.virtualSize
+	}
+
+	// 执行拷贝
+	copy(b, m.activeMap[offset:readEnd])
+	return int(readEnd - offset), nil
 }
 
-func (mmap *MMap) Write(b []byte) (int, error) {
-	if mmap.file == nil {
-		return 0, ErrFileHasBeenClosed
+func (m *MMap) Write(b []byte) (int, error) {
+	if err := m.remap(m.virtualSize, len(b)); err != nil {
+		return 0, err
 	}
-	copy(mmap.data[mmap.offset:], b)
-	mmap.offset += int64(len(b))
+	copy(m.activeMap[m.virtualSize:m.virtualSize+int64(len(b))], b)
+	m.virtualSize += int64(len(b))
 	return len(b), nil
 }
 
-func (mmap *MMap) Sync() error {
-	if mmap.file == nil {
-		return ErrFileHasBeenClosed
-	}
-	err := mmap.data.Flush()
-	return err
+func (m *MMap) Sync() error {
+	return m.activeMap.Flush()
 }
 
-func (mmap *MMap) Close() error {
-	if mmap.file == nil {
-		return ErrFileHasBeenClosed
-	}
-	err := mmap.data.Flush()
-	if err != nil {
+func (m *MMap) Close() error {
+	if err := m.activeMap.Flush(); err != nil {
 		return err
 	}
-	err = mmap.data.Unmap()
-	if err != nil {
+	if err := m.activeMap.Unmap(); err != nil {
 		return err
 	}
-	// 关闭文件前将其大小修改为真实大小
-	err = mmap.file.Truncate(mmap.offset)
-	if err != nil {
+	if err := m.ResetFileSize(); err != nil {
 		return err
 	}
-	err = mmap.file.Close()
-	return err
+	return m.file.Close()
 }
 
-func (mmap *MMap) Size() (int64, error) {
-	if mmap.file == nil {
-		return 0, ErrFileHasBeenClosed
+func (m *MMap) Size() (int64, error) {
+	return m.virtualSize, nil
+}
+
+func (m *MMap) ResetFileSize() error {
+	return m.file.Truncate(m.virtualSize)
+}
+
+// 如果有必要, 扩展映射区域
+func (m *MMap) remap(newBase int64, dataSize int) error {
+	// 如果映射区域已包含所需数据, 直接返回
+	if newBase+int64(dataSize) <= m.endOff {
+		return nil
 	}
-	// 通过维护 offset 实现, 故不允许运行中更换 IO 实现
-	return mmap.offset, nil
+
+	// 动态扩展 blockSize 的整数倍的长度
+	m.endOff = ((newBase + int64(dataSize) + blockSize - 1) / blockSize) * blockSize
+
+	// 如果新映射区域超过设置的文件大小, 则进行调整
+	if info, _ := m.file.Stat(); info.Size() < m.endOff {
+		if err := m.file.Truncate(m.endOff); err != nil {
+			return fmt.Errorf("truncate failed: %v", err)
+		}
+	}
+
+	// 解除旧映射
+	if m.activeMap != nil {
+		if err := m.activeMap.Unmap(); err != nil {
+			return fmt.Errorf("unmap failed: %v", err)
+		}
+	}
+
+	// 如果当前为 32 位系统, 判断新映射区域是否溢出
+	if unsafe.Sizeof(0) == 4 && m.endOff > 1<<31-1 {
+		return fmt.Errorf("32bit system max mapping size is 2GB")
+	}
+	// 创建新映射
+	data, err := mmap.MapRegion(m.file, int(m.endOff), mmap.RDWR, 0, 0)
+	if err != nil {
+		return fmt.Errorf("mmap failed: %v", err)
+	}
+
+	m.activeMap = data
+
+	return nil
 }

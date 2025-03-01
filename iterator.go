@@ -52,8 +52,6 @@ func (it *Iterator) Key() []byte {
 // Value 返回当前位置 key 对应的实际 value
 func (it *Iterator) Value() ([]byte, error) {
 	logRecordPos := it.indexIter.Value()
-	it.db.mu.Lock()
-	defer it.db.mu.Unlock()
 	return it.db.getValueByPosition(logRecordPos)
 }
 

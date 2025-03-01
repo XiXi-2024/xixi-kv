@@ -3,6 +3,7 @@ package datafile
 import (
 	"github.com/XiXi-2024/xixi-kv/fio"
 	"github.com/stretchr/testify/assert"
+	"github.com/valyala/bytebufferpool"
 	"io"
 	"os"
 	"testing"
@@ -19,45 +20,59 @@ func TestDataFile_WriteAndRead(t *testing.T) {
 	assert.Nil(t, err)
 
 	// 测试小数据写入和读取
-	data1 := []byte("hello world")
-	pos1, err := df.write(data1)
+	data := bytebufferpool.Get()
+	data.Write([]byte("hello world"))
+	pos1, err := df.writeSingle(data)
 	assert.Nil(t, err)
 	assert.NotNil(t, pos1)
-	data2, err := df.read(pos1.BlockID, pos1.Offset)
+	data = bytebufferpool.Get()
+	err = df.readToBuf(pos1.BlockID, pos1.Offset, data)
 	assert.Nil(t, err)
-	assert.Equal(t, data1, data2)
+	assert.Equal(t, "hello world", data.String())
+	bytebufferpool.Put(data)
 
 	// 测试大数据写入和读取（跨块）
-	data1 = make([]byte, blockSize)
-	for i := range data1 {
-		data1[i] = byte(i % 256)
+	x := make([]byte, blockSize)
+	for i := range x {
+		x[i] = byte(i % 256)
 	}
-	pos1, err = df.write(data1)
+	data = bytebufferpool.Get()
+	data.Write(x)
+	pos1, err = df.writeSingle(data)
 	assert.Nil(t, err)
 	assert.NotNil(t, pos1)
-	data2, err = df.read(pos1.BlockID, pos1.Offset)
+	data = bytebufferpool.Get()
+	err = df.readToBuf(pos1.BlockID, pos1.Offset, data)
 	assert.Nil(t, err)
-	assert.Equal(t, data1, data2)
+	assert.Equal(t, x, data.Bytes())
+	bytebufferpool.Put(data)
 
 	// 4. 测试边界条件：块边界写入
 	// 先写入一些数据，使lastBlockSize接近blockSize
-	data1 = make([]byte, blockSize-df.lastBlockSize-chunkHeaderSize+1)
-	pos1, err = df.write(data1)
+	x = make([]byte, blockSize-df.lastBlockSize-chunkHeaderSize+1)
+	data = bytebufferpool.Get()
+	data.Write(x)
+	pos1, err = df.writeSingle(data)
 	assert.Nil(t, err)
 	assert.NotNil(t, pos1)
 	// 此时再写入数据会触发块填充
-	data2 = []byte("test")
-	pos2, err := df.write(data2)
+	data = bytebufferpool.Get()
+	data.Write([]byte("test"))
+	pos2, err := df.writeSingle(data)
 	assert.Nil(t, err)
 	// 验证数据写入到了新的块
 	assert.Equal(t, df.lastBlockID-1, pos1.BlockID)
-	data3, err := df.read(pos2.BlockID, pos2.Offset)
+	data = bytebufferpool.Get()
+	err = df.readToBuf(pos2.BlockID, pos2.Offset, data)
 	assert.Nil(t, err)
-	assert.Equal(t, data2, data3)
+	assert.Equal(t, []byte("test"), data.Bytes())
+	bytebufferpool.Put(data)
 
 	// 测试错误处理：无效的读取位置
-	_, err = df.read(1000, 0) // 读取不存在的块
+	data = bytebufferpool.Get()
+	err = df.readToBuf(1000, 0, data) // 读取不存在的块
 	assert.Equal(t, io.EOF, err)
+	bytebufferpool.Put(data)
 }
 
 // DataReader
@@ -81,7 +96,7 @@ func TestDataReader(t *testing.T) {
 		Key:   []byte("key1"),
 		Value: []byte("value1"),
 	}
-	header := make([]byte, MaxChunkHeaderSize)
+	header := make([]byte, MaxLogRecordHeaderSize)
 	pos1, err := df.WriteLogRecord(logRecord1, header)
 	assert.Nil(t, err)
 	// 读取
@@ -140,7 +155,8 @@ func TestDataReader_HintRecord(t *testing.T) {
 		Offset:  100,
 		Size:    200,
 	}
-	err = df.WriteHintRecord(key, pos)
+	hintPos := make([]byte, MaxLogRecordPosSize)
+	err = df.WriteHintRecord(key, hintPos, pos)
 	assert.Nil(t, err)
 
 	// 2. 读取hint记录

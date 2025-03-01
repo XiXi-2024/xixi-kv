@@ -6,6 +6,17 @@ import (
 	"hash/crc32"
 )
 
+type LogRecordType = byte
+
+const (
+	// LogRecordNormal 生效中
+	LogRecordNormal LogRecordType = iota
+	// LogRecordDeleted 已删除
+	LogRecordDeleted
+	// LogRecordBatchFinished 所属批次的批处理操作已完成
+	LogRecordBatchFinished
+)
+
 type ChunkType = byte
 
 const (
@@ -23,32 +34,23 @@ const (
 	blockSize = 32 * 1024
 )
 
-type LogRecordStatus = byte
-
 const (
-	// LogRecordNormal 生效中
-	LogRecordNormal LogRecordStatus = iota
-	// LogRecordDeleted 已删除
-	LogRecordDeleted
-	// LogRecordTxnFinished 事务已完成
-	LogRecordTxnFinished
-)
+	// MaxLogRecordHeaderSize LogRecord头部最大长度
+	// type(1) + key size(5) + value size(5) + batchID(10) = 21
+	MaxLogRecordHeaderSize = binary.MaxVarintLen32*2 + binary.MaxVarintLen64 + 1
 
-const (
-	// MaxChunkHeaderSize LogRecord头部最大长度
-	// type(1) + key size(5) + value size(5)
-	MaxChunkHeaderSize = binary.MaxVarintLen32*3 + binary.MaxVarintLen64
-
+	// MaxLogRecordPosSize 日志索引最大长度
 	// SegmentId(5) + BlockNumber(5) + ChunkOffset(10) + ChunkSize(5) = 25
-	maxLogRecordPosSize = binary.MaxVarintLen32*3 + binary.MaxVarintLen64
+	MaxLogRecordPosSize = binary.MaxVarintLen32*3 + binary.MaxVarintLen64
 )
 
 // LogRecord 日志记录数据内容
 // 以追加形式写入, 故称为日志记录
 type LogRecord struct {
-	Type  LogRecordStatus
-	Key   []byte
-	Value []byte
+	Type    LogRecordType // 记录类型
+	Key     []byte        // key
+	Value   []byte        // value
+	BatchID uint64        // 批处理唯一 ID
 }
 
 // DataPos 数据记录的起始索引
@@ -67,18 +69,23 @@ type TransactionRecords struct {
 }
 
 // EncodeLogRecord 对 LogRecord 实例编码
-// 返回编码后包含完日志记录的字节数组和数组长度
-func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.ByteBuffer) []byte {
+func EncodeLogRecord(logRecord *LogRecord, header []byte, buf *bytebufferpool.ByteBuffer) {
+	// type
 	header[0] = logRecord.Type
+
 	idx := 1
 	// key size
 	idx += binary.PutVarint(header[idx:], int64(len(logRecord.Key)))
+
 	// value size
 	idx += binary.PutVarint(header[idx:], int64(len(logRecord.Value)))
-	_, _ = buf.Write(header[:idx])
-	_, _ = buf.Write(logRecord.Key)
-	_, _ = buf.Write(logRecord.Value)
-	return buf.Bytes()
+
+	// batch id
+	idx += binary.PutUvarint(header[idx:], logRecord.BatchID)
+
+	buf.B = append(buf.B, header[:idx]...)
+	buf.B = append(buf.B, logRecord.Key...)
+	buf.B = append(buf.B, logRecord.Value...)
 }
 
 func DecodeLogRecord(data []byte) *LogRecord {
@@ -94,40 +101,65 @@ func DecodeLogRecord(data []byte) *LogRecord {
 	valueSize, n := binary.Varint(data[idx:])
 	idx += n
 
+	// batchID
+	batchID, n := binary.Uvarint(data[idx:])
+	idx += n
+
 	// key
-	key := make([]byte, keySize)
-	copy(key, data[idx:idx+int(keySize)])
-	idx += int(keySize)
+	var key []byte
+	if keySize > 0 {
+		key = make([]byte, keySize)
+		copy(key, data[idx:idx+int(keySize)])
+		idx += int(keySize)
+	}
 
 	// value
-	value := make([]byte, valueSize)
-	copy(value, data[idx:idx+int(valueSize)])
+	var value []byte
+	if valueSize > 0 {
+		value = make([]byte, valueSize)
+		copy(value, data[idx:idx+int(valueSize)])
+	}
 
 	return &LogRecord{
-		Type:  recordType,
-		Key:   key,
-		Value: value,
+		Type:    recordType,
+		Key:     key,
+		Value:   value,
+		BatchID: batchID,
 	}
 }
 
-func EncodeHintRecord(key []byte, pos *DataPos) []byte {
-	// todo 优化点：提供复用缓冲区
-	buf := make([]byte, maxLogRecordPosSize)
+func DecodeLogRecordValue(data []byte) []byte {
+	idx := 1
+	keySize, n := binary.Varint(data[idx:])
+	idx += n
+	valueSize, n := binary.Varint(data[idx:])
+	idx += n
+	_, n = binary.Uvarint(data[idx:])
+	idx += n
+
+	if valueSize == 0 {
+		return nil
+	}
+
+	value := make([]byte, valueSize)
+	copy(value, data[idx+int(keySize):idx+int(keySize)+int(valueSize)])
+	return value
+}
+
+func EncodeHintRecord(key []byte, pos *DataPos, hintPos []byte, buf *bytebufferpool.ByteBuffer) {
 	var idx = 0
 	// Fid
-	idx += binary.PutUvarint(buf[idx:], uint64(pos.Fid))
+	idx += binary.PutUvarint(hintPos[idx:], uint64(pos.Fid))
 	// BlockID
-	idx += binary.PutUvarint(buf[idx:], uint64(pos.BlockID))
+	idx += binary.PutUvarint(hintPos[idx:], uint64(pos.BlockID))
 	// Offset
-	idx += binary.PutUvarint(buf[idx:], uint64(pos.Offset))
+	idx += binary.PutUvarint(hintPos[idx:], uint64(pos.Offset))
 	// Size
-	idx += binary.PutUvarint(buf[idx:], uint64(pos.Size))
+	idx += binary.PutUvarint(hintPos[idx:], uint64(pos.Size))
 
 	// key
-	result := make([]byte, idx+len(key))
-	copy(result, buf[:idx])
-	copy(result[idx:], key)
-	return result
+	buf.B = append(buf.B, hintPos[:idx]...)
+	buf.B = append(buf.B, key...)
 }
 
 func DecodeHintRecord(buf []byte) ([]byte, *DataPos) {
@@ -165,10 +197,4 @@ func DecodeChunk(block []byte) ([]byte, ChunkType, error) {
 		return nil, 0, ErrInvalidCRC
 	}
 	return block[start:end], block[6], nil
-}
-
-func EncodeMergeFinRecord(id FileID) []byte {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, id)
-	return buf
 }

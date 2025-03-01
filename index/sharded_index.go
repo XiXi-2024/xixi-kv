@@ -49,7 +49,7 @@ func (s *ShardedIndex) Get(key []byte) *datafile.DataPos {
 	return shard.get(key)
 }
 
-func (s *ShardedIndex) Delete(key []byte) (*datafile.DataPos, bool) {
+func (s *ShardedIndex) Delete(key []byte) *datafile.DataPos {
 	shard, lock := s.locateShard(key)
 	lock.Lock()
 	defer lock.Unlock()

@@ -1,7 +1,6 @@
 package xixi_kv
 
 import (
-	"fmt"
 	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/XiXi-2024/xixi-kv/utils"
 	"github.com/gofrs/flock"
@@ -78,7 +77,7 @@ func TestDB_Put(t *testing.T) {
 		value, err := db.Get(utils.GetTestKey(i))
 		assert.Nil(t, err)
 		assert.NotNil(t, value)
-		assert.Equal(t, string(value), values[i])
+		assert.Equal(t, values[i], string(value))
 	}
 
 	// 6. 重启数据库后进行 Put
@@ -151,15 +150,15 @@ func TestDB_Delete(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, val3, value3)
 
-	// 5.重启
-	key5, value5 := utils.GetTestKey(55), utils.RandomValue(128)
-	err = db.Put(key5, value5)
+	// 4.重启
+	key4, value4 := utils.GetTestKey(55), utils.RandomValue(128)
+	err = db.Put(key4, value4)
 	assert.Nil(t, err)
-	val5, err := db.Get(key5)
+	val4, err := db.Get(key4)
 	assert.Nil(t, err)
-	assert.NotNil(t, val5)
-	assert.Equal(t, val5, value5)
-	err = db.Delete(key5)
+	assert.NotNil(t, val4)
+	assert.Equal(t, val4, value4)
+	err = db.Delete(key4)
 	assert.Nil(t, err)
 
 	err = db.Close()
@@ -169,14 +168,14 @@ func TestDB_Delete(t *testing.T) {
 	assert.NotNil(t, db)
 
 	// 原先存在
-	val5, err = db.Get(key3)
+	val5, err := db.Get(key3)
 	assert.Nil(t, err)
 	assert.NotNil(t, val5)
 	assert.Equal(t, val5, value3)
 
 	// 原先已删除
-	val5, err = db.Get(key5)
-	assert.Equal(t, 0, len(val5))
+	val6, err := db.Get(key4)
+	assert.Equal(t, 0, len(val6))
 	assert.Equal(t, ErrKeyNotFound, err)
 }
 
@@ -217,7 +216,7 @@ func TestDB_ListKeys(t *testing.T) {
 	// 4. 删除数据
 	err = db.Delete(utils.GetTestKey(0))
 	assert.Nil(t, err)
-	keys = db.ListKeys()
+	keys := db.ListKeys()
 	assert.Equal(t, n-1, len(keys))
 	for _, k := range keys {
 		assert.NotEqual(t, utils.GetTestKey(0), k, "删除的 key 仍然存在")
@@ -316,33 +315,33 @@ func TestDB_Stat(t *testing.T) {
 	}
 	stat := db.Stat()
 	assert.NotNil(t, stat)
-	assert.Equal(t, uint(800), stat.KeyNum)
-	assert.Equal(t, uint(1), stat.DataFileNum)
+	assert.Equal(t, 800, stat.KeyNum)
+	assert.Equal(t, 1, stat.DataFileNum)
 }
 
 func TestDB_Backup(t *testing.T) {
 	opts := DefaultOptions
 	dir, _ := os.MkdirTemp("", "bitcask-go-backup")
 	opts.DirPath = dir
-	opts.DataFileSize = 1024
+	opts.DataFileSize = 512 * 1024
 	db1, err := Open(opts)
 	assert.Nil(t, err)
 	assert.NotNil(t, db1)
-	defer destroyDB(db1)
-
 	value := utils.RandomValue(128)
 	for i := 1; i < 1000; i++ {
 		err := db1.Put(utils.GetTestKey(i), value)
 		assert.Nil(t, err)
 	}
-
 	backupDir, _ := os.MkdirTemp("", "bitcask-go-backup-test")
 	err = db1.Backup(backupDir)
 	assert.Nil(t, err)
+	defer destroyDB(db1)
+
 	opts.DirPath = backupDir
 	db2, err := Open(opts)
 	assert.Nil(t, err)
 	assert.NotNil(t, db2)
+	defer destroyDB(db2)
 	for i := 1; i < 1000; i++ {
 		val, err := db2.Get(utils.GetTestKey(i))
 		assert.Nil(t, err)
@@ -365,58 +364,5 @@ func destroyDB(db *DB) {
 		if err != nil {
 			panic(err)
 		}
-	}
-}
-
-var n = 5000000
-var db *DB
-var keys [][]byte
-var value []byte
-
-func init() {
-	opts := DefaultOptions
-	dir, _ := os.MkdirTemp("", "bitcask-go-benchmark")
-	fmt.Println(dir)
-	opts.DirPath = dir
-	var err error
-	db, err = Open(opts)
-	if err != nil {
-		panic(err)
-	}
-
-	keys = make([][]byte, n)
-	value = utils.RandomValue(1024)
-	for i := 0; i < n; i++ {
-		keys[i] = utils.GetTestKey(i)
-	}
-}
-
-func BenchmarkDB_Put(b *testing.B) {
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = db.Put(keys[i], value)
-	}
-}
-
-func BenchmarkDB_Get(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		_ = db.Put(keys[i], value)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = db.Get(utils.GetTestKey(i))
-	}
-}
-
-func BenchmarkDB_Delete(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		_ = db.Put(keys[i], value)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = db.Delete(keys[i])
 	}
 }
