@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"github.com/XiXi-2024/xixi-kv/datafile"
 	"github.com/google/btree"
-	"sort"
 )
 
 // B 树索引实现
@@ -78,82 +77,122 @@ func (bt *btreeIndex) close() error {
 }
 
 func (bt *btreeIndex) iterator(reverse bool) iterator {
+	if bt.tree == nil {
+		return nil
+	}
 	return newBTreeIterator(bt.tree, reverse)
 }
 
 // btreeIndex 索引迭代器
 type btreeIterator struct {
-	reverse  bool // 是否降序遍历
-	curIndex int  // 当前遍历位置
-	values   []*item
+	tree       *btree.BTree
+	reverse    bool
+	current    *item
+	isIterable bool
 }
 
 func newBTreeIterator(tree *btree.BTree, reverse bool) *btreeIterator {
-	if tree == nil {
-		return &btreeIterator{
-			values: make([]*item, 0),
+	var current *item
+	var valid bool
+	if tree.Len() > 0 {
+		if reverse {
+			current = tree.Max().(*item)
+		} else {
+			current = tree.Min().(*item)
 		}
+		valid = true
 	}
-
-	// 暂时将所有项放入数组中进行操作, 可能导致占用内存急剧膨胀
-	var idx int
-	values := make([]*item, tree.Len())
-
-	// 定义遍历函数
-	saveValues := func(it btree.Item) bool {
-		// 处理元素, 按顺序追加到数组中
-		values[idx] = it.(*item)
-		idx++
-		// 返回 false 终止遍历
-		return true
-	}
-
-	if reverse {
-		tree.Descend(saveValues)
-	} else {
-		tree.Ascend(saveValues)
-	}
-
 	return &btreeIterator{
-		curIndex: 0,
-		values:   values,
-		reverse:  reverse,
+		tree:       tree.Clone(),
+		reverse:    reverse,
+		current:    current,
+		isIterable: valid,
 	}
 }
 
-func (bti *btreeIterator) rewind() {
-	bti.curIndex = 0
+func (it *btreeIterator) rewind() {
+	if it.tree == nil || it.tree.Len() == 0 {
+		return
+	}
+	if it.reverse {
+		it.current = it.tree.Max().(*item)
+	} else {
+		it.current = it.tree.Min().(*item)
+	}
+	it.isIterable = true
 }
 
-func (bti *btreeIterator) seek(key []byte) {
-	// 初始化时底层数组已有序 直接二分查找即可
-	if bti.reverse {
-		bti.curIndex = sort.Search(len(bti.values), func(i int) bool {
-			return bytes.Compare(bti.values[i].key, key) <= 0
+func (it *btreeIterator) seek(key []byte) {
+	if it.tree == nil || !it.isIterable {
+		return
+	}
+	seekItem := &item{key: key}
+	it.isIterable = false
+	if it.reverse {
+		it.tree.DescendLessOrEqual(seekItem, func(i btree.Item) bool {
+			it.current = i.(*item)
+			it.isIterable = true
+			return false
 		})
 	} else {
-		bti.curIndex = sort.Search(len(bti.values), func(i int) bool {
-			return bytes.Compare(bti.values[i].key, key) >= 0
+		it.tree.AscendGreaterOrEqual(seekItem, func(i btree.Item) bool {
+			it.current = i.(*item)
+			it.isIterable = true
+			return false
 		})
 	}
 }
 
-func (bti *btreeIterator) next() {
-	bti.curIndex++
+func (it *btreeIterator) next() {
+	if it.tree == nil || !it.isIterable {
+		return
+	}
+	it.isIterable = false
+	if it.reverse {
+		it.tree.DescendLessOrEqual(it.current, func(i btree.Item) bool {
+			if !i.(*item).Less(it.current) {
+				return true
+			}
+			it.current = i.(*item)
+			it.isIterable = true
+			return false
+		})
+	} else {
+		it.tree.AscendGreaterOrEqual(it.current, func(i btree.Item) bool {
+			if !it.current.Less(i.(*item)) {
+				return true
+			}
+			it.current = i.(*item)
+			it.isIterable = true
+			return false
+		})
+	}
+	if !it.isIterable {
+		it.current = nil
+	}
 }
 
-func (bti *btreeIterator) valid() bool {
-	return bti.curIndex < len(bti.values)
+func (it *btreeIterator) valid() bool {
+	return it.isIterable
 }
 
-func (bti *btreeIterator) key() []byte {
-	return bti.values[bti.curIndex].key
+func (it *btreeIterator) key() []byte {
+	if !it.isIterable {
+		return nil
+	}
+	return it.current.key
 }
 
-func (bti *btreeIterator) value() *datafile.DataPos {
-	return bti.values[bti.curIndex].pos
+func (it *btreeIterator) value() *datafile.DataPos {
+	if !it.isIterable {
+		return nil
+	}
+	return it.current.pos
 }
 
-func (bti *btreeIterator) close() {
-	bti.values = nil
+func (it *btreeIterator) close() {
+	it.tree.Clear(true)
+	it.tree = nil
+	it.current = nil
+	it.isIterable = false
 }

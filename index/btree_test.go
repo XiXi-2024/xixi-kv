@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// 添加
 func TestBTree_put(t *testing.T) {
 	bt := newBTree()
 
@@ -24,7 +23,6 @@ func TestBTree_put(t *testing.T) {
 	assert.Equal(t, res3.Offset, uint32(2))
 }
 
-// 查询
 func TestBTree_get(t *testing.T) {
 	bt := newBTree()
 

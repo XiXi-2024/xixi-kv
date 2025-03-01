@@ -207,6 +207,7 @@ func TestShardedIndex_Iterator(t *testing.T) {
 		// 重置迭代器
 		it.Rewind()
 		assert.True(t, it.Valid())
+		t.Log(it.Key())
 		assert.Equal(t, []byte("key1"), it.Key())
 	})
 
