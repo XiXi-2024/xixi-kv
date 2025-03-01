@@ -17,7 +17,6 @@ func newWrongNumberOfArgsError(cmd string) error {
 type cmdHandler func(cli *BitcaskClient, args [][]byte) (interface{}, error)
 
 // 命令名称和对应处理函数的映射
-// todo 后续补全完善
 var supportedCommands = map[string]cmdHandler{
 	"set":   set,
 	"get":   get,

@@ -17,7 +17,6 @@ func GetTestKey(n int) []byte {
 }
 
 // RandomValue 生成长度为 n+16 的随机 value 供测试使用
-// todo 优化生成数据的随机性
 func RandomValue(n int) []byte {
 	b := make([]byte, n)
 	for i := range b {

@@ -43,9 +43,6 @@ func (dts *DataTypeService) Close() error {
 }
 
 // ========================= String 数据类型 ========================
-// todo 后续接口参数重构为 string 类型
-// todo 后续拆分到各个文件
-// todo 扩展点：后续新增其它命令
 func (dts *DataTypeService) Set(key, value []byte, ttl time.Duration) error {
 	if value == nil {
 		return nil
@@ -414,7 +411,6 @@ func (dts *DataTypeService) popInner(key []byte, isLeft bool) ([]byte, error) {
 	}
 
 	// 仅更新元数据即可
-	// todo 未释放删除元素占用内存
 	meta.size--
 	if isLeft {
 		meta.head++
@@ -492,7 +488,6 @@ func (dts *DataTypeService) ZAdd(key []byte, score float64, member []byte) (bool
 func (dts *DataTypeService) ZScore(key []byte, member []byte) (float64, error) {
 	// 查询元数据信息
 	meta, err := dts.findMetadata(key, ZSet)
-	// todo 暂时仅支持 score 为非负数
 	if err != nil {
 		return -1, err
 	}

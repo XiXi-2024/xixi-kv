@@ -29,7 +29,6 @@ const (
 )
 
 // DataFile 数据文件
-// todo 优化点：文件层实现同步措施, 最小化锁粒度
 type DataFile struct {
 	ID             FileID                       // 文件 id
 	ReadWriter     fio.ReadWriter               // IO 实现
@@ -276,18 +275,18 @@ func (df *DataFile) ReadRecordValue(logRecordPos *DataPos) ([]byte, error) {
 	return value, nil
 }
 
-func (df *DataFile) ReadMergeFinRecord() (FileID, error) {
+func (df *DataFile) ReadMergeFinRecord() FileID {
 	if df.closed {
-		return 0, ErrClosed
+		return 0
 	}
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	err := df.readToBuf(0, 0, buf)
 	if err != nil {
-		return 0, err
+		return 0
 	}
 	value := binary.LittleEndian.Uint32(buf.Bytes())
-	return value, nil
+	return value
 }
 
 func (df *DataFile) readToBuf(blockID uint32, offset uint32, buf *bytebufferpool.ByteBuffer) error {

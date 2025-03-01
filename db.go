@@ -39,7 +39,6 @@ type DB struct {
 }
 
 // Stat 实时统计信息
-// todo 扩展点：后续进行维护和利用
 type Stat struct {
 	KeyNum          int   // 当前 key 的数量
 	DataFileNum     int   // 当前数据文件数量
@@ -125,7 +124,7 @@ func Open(options Options) (*DB, error) {
 	}
 
 	if db.activeFile == nil {
-		if err := db.setActiveDataFile(); err != nil {
+		if err := db.setActiveFile(); err != nil {
 			return nil, err
 		}
 	}
@@ -410,7 +409,7 @@ func (db *DB) sync() error {
 	db.olderFiles[db.activeFile.ID] = db.activeFile
 
 	// 设置新的活跃文件
-	if err := db.setActiveDataFile(); err != nil {
+	if err := db.setActiveFile(); err != nil {
 		return err
 	}
 
@@ -418,7 +417,7 @@ func (db *DB) sync() error {
 }
 
 // 创建并设置新活跃文件
-func (db *DB) setActiveDataFile() error {
+func (db *DB) setActiveFile() error {
 	// 通过原活跃文件id自增获取新的文件id
 	var fileID uint32 = 0
 	if db.activeFile != nil {
@@ -554,7 +553,6 @@ func (db *DB) loadIndexFromDataFiles(fileIds []uint32, nonMergeFileId uint32) er
 }
 
 // 配置项校验
-// todo 优化点：完善校验, 采用责任链模式重构
 func checkOptions(options Options) error {
 	if options.DirPath == "" {
 		return errors.New("database dir path is empty")
