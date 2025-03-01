@@ -199,7 +199,6 @@ func (b *Batch) Commit() error {
 	logRecord := b.db.recordPool.Get().(*datafile.LogRecord)
 	logRecord.Key = append(logRecord.Key, b.batchID.Bytes()...)
 	logRecord.Type = datafile.LogRecordBatchFinished
-
 	_, err = b.db.activeFile.WriteLogRecord(logRecord, b.db.logRecordHeader)
 	b.db.putRecordToPool(logRecord)
 	if err != nil {

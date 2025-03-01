@@ -51,7 +51,7 @@ var DefaultOptions = Options{
 	EnableBackgroundMerge: false,
 	IndexType:             index.HashMap,
 	ShardNum:              16,
-	FileIOType:            fio.MemoryMap,
+	FileIOType:            fio.StandardFIO,
 	DataFileMergeRatio:    0.5,
 }
 
