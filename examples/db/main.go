@@ -6,7 +6,6 @@ import (
 	"log"
 )
 
-// 使用示例
 func main() {
 	opts := kv.DefaultOptions
 	db, err := kv.Open(opts)
