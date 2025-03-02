@@ -1,41 +1,36 @@
 ![xixi-kv-logo.jpg](./assets/images/xixi-kv-logo.jpg)\
 ![GitHub top language](https://img.shields.io/github/languages/top/XiXi-2024/xixi-kv)   [![Go Reference](https://pkg.go.dev/badge/github.com/XiXi-2024/xixi-kv)](https://pkg.go.dev/github.com/XiXi-2024/xixi-kv)   ![LICENSE](https://img.shields.io/github/license/XiXi-2024/xixi-kv)   ![GitHub stars](https://img.shields.io/github/stars/XiXi-2024/xixi-kv)   ![GitHub forks](https://img.shields.io/github/forks/XiXi-2024/xixi-kv)   [![Go Report Card](https://goreportcard.com/badge/github.com/XiXi-2024/xixi-kv)](https://goreportcard.com/report/github.com/XiXi-2024/xixi-kv)![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/XiXi-2024/xixi-kv)![GitHub contributors](https://img.shields.io/github/contributors/XiXi-2024/xixi-kv)
 
-xixi-kv 是基于 Bitcask 模型的轻量级 kv 存储引擎，具备读写低时延、高吞吐、超越内存容量的数据存储能力等核心特性。
+xixi-kv 是基于bitcask 模型的、并发安全的 kv 存储引擎，具备读写低时延、高吞吐、超越内存容量的数据存储能力等特性。
 ### 特性
-- 支持 B 树、可持久化 B+ 树、自适应基数树索引实现，用户可权衡操作效率与存储能力灵活选择合适的索引方案。
-- 支持批量事务写入，通过全局锁和数据库启动识别机制实现事务的原子性与隔离性。
-- 设计定制化的日志记录数据格式，采用变长字段并自实现相应的解编码器，优化日志记录的存储效率。
-- 运用迭代器模式，在索引层和数据库层分别定义统一的迭代器接口，实现对日志记录的有序遍历和附加操作。
-- 引入内存文件映射（MMap）IO管理实现加速索引构建，在数据量不超过可用内存大小的场景下提升启动速度。
+
+更多特性和使用请参考：[issues](https://github.com/XiXi-2024/xixi-kv/issues)
+
+* 支持并发安全的分片索引实现，并提供多种底层索引配置选项，包括 B 树、跳表、map 等
+* 支持高性能的、无最大操作数限制的批处理功能，并能保证原子性、持久性、一致性
+* 支持标准文件 I/O 和内存文件映射（MMap）两种 I/O 实现和相应的配置选项，适用于不同数据文件容量场景
+* 支持数据库层级的迭代器功能，对外提供迭代器配置选项，允许用户灵活控制数据的遍历方式
+
 ### 快速入门
-完整示例详见：[basic_operation.go](examples/basic_operation.go)
+完整示例详见：[main.go](examples/db/main.go)
+
 #### 安装
 安装`Go`并运行`go get`命令
 ```shell
-$ go get -u github.com/XiXi-2024/xixi-kv
+go get -u github.com/XiXi-2024/xixi-kv
 ```
 #### 打开数据库
-xixi-kv 的核心对象是`DB`，如果需要打开或创建数据库请使用`Open`方法
+xixi-kv 的核心对象是`DB`，提供默认配置项`DefaultOptions`，如果需要打开或创建数据库请使用`Open`方法
 ```go
 package main
 
-import (
-	kv "github.com/XiXi-2024/xixi-kv"
-	"log"
-)
+import kv "github.com/XiXi-2024/xixi-kv"
 
-// 使用示例
 func main() {
-	// 提供默认用户配置项, 默认路径为系统临时目录
-	opts := kv.DefaultOptions
-	db, err := kv.Open(opts)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-	// ...
+	db, err := kv.Open(kv.DefaultOptions)
+    // ...
 }
+
 ```
 #### 基础操作
 ```go
@@ -48,16 +43,62 @@ val, err := db.Get(key)
 // 删除
 err = db.Delete(key)
 ```
-### 单线程基准测试
-MacOS系统，默认配置
+### 高级配置
 
-| 接口   | QPS (os.File) | 响应时间 (os.File) | QPS (mmap) | 相应时间 (mmap) |
-|--------|---------------|----------------|------------|-------------|
-| Put    | 53703         | 27745          | 855710     | 1725        |
-| Get    | 323540        | 3731           | 1767753    | 716.7       |
-| Delete | 415341        | 2921           | 2121006    | 627.7       |
-### 问题
-`Windows`系统中运行时需要确保所有打开的 `DB` 实例或文件显式关闭才能删除文件，否则会出现类似`The process cannot access the file because it is being used by another process.`的错误\
-建议在 Mac 或 Linux 环境下运行或在 Windows 系统下测试时手动删除生成的文件。
+xixi-kv 提供多种配置选项，可根据实际需求进行调整
+
+```go
+opts := kv.Options{
+    DirPath:            "/path/to/data",    // 数据目录
+    DataFileSize:       256 * 1024 * 1024,  // 数据文件大小限制
+    SyncStrategy:       kv.Threshold,       // 同步策略
+    BytesPerSync:       8 * 1024 * 1024,    // 每写入多少字节执行一次同步
+    IndexType:          kv.BPTree,          // 索引类型
+    ShardNum:           16,                 // 索引分片数
+    FileIOType:         kv.MemoryMap,       // I/O 类型
+    DataFileMergeRatio: 0.5,                // 合并触发比例
+    EnableBackgroundMerge: true,            // 启用后台合并
+}
+```
+
+### 基准测试
+
+完整测试详见：[db_test.go](benchmark/db_test.go)
+
+#### 环境
+
+```go
+goos: darwin
+goarch: arm64
+cpu: Apple M1
+```
+
+#### os.File
+
+| 接口   | QPS（单线程） | QPS（多线程） |
+| ------ | ------------- | ------------- |
+| Put    | 444279        | 376621        |
+| Get    | 1002304       | 2370576       |
+| Delete | 1297602       | 1006764       |
+
+#### mmap
+
+| 接口   | QPS（单线程） | QPS（多线程） |
+| ------ | ------------- | ------------- |
+| Put    | 1004450       | 1000326       |
+| Get    | 2210830       | 8933606       |
+| Delete | 6813520       | 4509661       |
+
+### 注意事项
+
+在 Windows 系统中运行时，需要确保所有打开的 DB 实例或文件显式关闭才能删除文件，否则可能会出现以下错误
+
+```plaintext
+The process cannot access the file because it is being used by another process.
+```
+
+建议在 macOS 或 Linux 环境下运行，或在 Windows 系统下测试时手动删除生成的文件。
+
 ### 贡献
-项目仍不完善，非常欢迎 issue 和 pr，我会第一时间响应！
+
+随着项目规模越来越大，我深感个人力量是有限的，项目仍有许多问题需要解决，许多有挑战的功能需要实现，如果你对该项目感兴趣，非常欢迎提交 issue 和 pr，我会第一时间响应！

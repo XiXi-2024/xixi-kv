@@ -3,72 +3,104 @@
 
 English | [简体中文](README_CN.md)
 
-xixi-kv is a lightweight key-logRecord storage engine based on the Bitcask model, featuring low-latency readToBuf/writeSingle operations, high throughput, and the ability to store data volumes exceeding available memory.
-
+xixi-kv is a concurrent-safe key-value storage engine based on the Bitcask model, featuring low read/write latency, high throughput, and data storage capacity that exceeds memory limitations.
 ### Features
-- Supports multiple idx implementations including B-Tree, persistent B+ Tree, and adaptive radix tree, allowing users to balance operational efficiency with storage capacity based on their needs.
-- Implements batch transaction writes with atomicity and isolation through global locking and database startup identification mechanisms.
-- Features a custom log logRecord format with variable-length fields and self-implemented encoders/decoders to optimize storage efficiency.
-- Employs the iterator pattern with unified interfaces at both idx and database layers for ordered traversal and extended operations on log records.
-- Utilizes memory-mapped (MMap) IO management to accelerate idx building, improving startup speed when data volume is within available memory limits.
+
+For more features and usage information, please refer to：[issues](https://github.com/XiXi-2024/xixi-kv/issues)
+
+* Supports concurrent-safe sharded index implementation with multiple underlying index configuration options, including B-tree, skip list, and map.
+* Provides high-performance batch processing with no maximum operation limit, guaranteeing atomicity, durability, and consistency.
+* Supports both standard file I/O and memory-mapped file (MMap) implementations with corresponding configuration options, suitable for different data file capacity scenarios.
+* Offers database-level iterator functionality with customizable iterator configuration options, allowing users to flexibly control data traversal methods.
 
 ### Quick Start
-For a complete example, see: [basic_operation.go](examples/basic_operation.go)
+For a complete example, see：[main.go](examples/db/main.go)
 
 #### Installation
-Install `Go` and run the `go get` command:
+Install Go and run the go get command:
 ```shell
-$ go get -u github.com/XiXi-2024/xixi-kv
+go get -u github.com/XiXi-2024/xixi-kv
 ```
-
 #### Opening the Database
-The core object in xixi-kv is `DB`. Use the `Open` method to create or open a database:
+The core object of xixi-kv is DB , which provides default configuration options via DefaultOptions . To open or create a database, use the Open method:
 ```go
 package main
 
-import (
-	kv "github.com/XiXi-2024/xixi-kv"
-	"log"
-)
+import kv "github.com/XiXi-2024/xixi-kv"
 
-// Usage example
 func main() {
-	// Use default options, default path is system temp directory
-	opts := kv.DefaultOptions
-	db, err := kv.Open(opts)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-	// ...
+	db, err := kv.Open(kv.DefaultOptions)
+    // ...
 }
-```
 
+```
 #### Basic Operations
 ```go
-// Put
+// Insert
 err = db.Put(key, logRecord)
 
-// Get
+// Retrieve
 val, err := db.Get(key)
 
 // Delete
 err = db.Delete(key)
 ```
+### Advanced Configuration
 
-### Single-Thread Benchmark
-MacOS system with default configuration
+xixi-kv offers various configuration options that can be adjusted according to specific requirements:
 
-| Operation | QPS (os.File) | Latency (os.File) | QPS (mmap) | Latency (mmap) |
-|-----------|---------------|------------------|------------|----------------|
-| Put       | 53703         | 27745            | 855710     | 1725          |
-| Get       | 323540        | 3731             | 1767753    | 716.7         |
-| Delete    | 415341        | 2921             | 2121006    | 627.7         |
+```go
+opts := kv.Options{
+    DirPath:            "/path/to/data",    // Data directory 
+    DataFileSize:       256 * 1024 * 1024,  // Data file size limit
+    SyncStrategy:       kv.Threshold,       // Synchronization strategy
+    BytesPerSync:       8 * 1024 * 1024,    // Bytes written before synchronization
+    IndexType:          kv.BPTree,          // Index type
+    ShardNum:           16,                 // Number of index shards
+    FileIOType:         kv.MemoryMap,       // I/O type
+    DataFileMergeRatio: 0.5,                // Merge trigger ratio
+    EnableBackgroundMerge: true,            // Enable background merging
+}
+```
 
-### Known Issues
-When running on `Windows` systems, ensure all open `DB` instances and files are explicitly closed before deletion. Otherwise, you may encounter errors like `The process cannot access the file because it is being used by another process.`
+### Benchmark Tests
 
-It is recommended to run on Mac or Linux environments, or manually delete generated files when testing on Windows.
+For complete testing details, see: [db_test.go](benchmark/db_test.go)
 
-### Contributions
-This project is still under development, and contributions are very welcome! Feel free to submit issues and pull requests—I will respond as quickly as possible!
+#### Environment
+
+```go
+goos: darwin
+goarch: arm64
+cpu: Apple M1
+```
+
+#### os.File
+
+| Interface   | QPS（Single Thread） | QPS（Multi-Thread） |
+| ------ | ------------- | ------------- |
+| Put    | 444279        | 376621        |
+| Get    | 1002304       | 2370576       |
+| Delete | 1297602       | 1006764       |
+
+#### mmap
+
+| Interface   | QPS（Single Thread） | QPS（Multi-Thread） |
+| ------ | ------------- | ------------- |
+| Put    | 1004450       | 1000326       |
+| Get    | 2210830       | 8933606       |
+| Delete | 6813520       | 4509661       |
+
+### Notes
+
+When running on Windows systems, ensure that all open DB instances or files are explicitly closed before attempting to delete files, otherwise you may encounter the following error:
+
+```plaintext
+The process cannot access the file because it is being used by another process.
+```
+
+It is recommended to run on macOS or Linux environments, or manually delete generated files when testing on Windows systems.
+
+### Contribution
+
+As the project continues to grow, I recognize the limitations of individual effort. There are still many issues to resolve and challenging features to implement. If you're interested in this project, I warmly welcome your issues and pull requests, and I'll respond promptly!
